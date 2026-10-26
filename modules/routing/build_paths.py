@@ -42,18 +42,22 @@ def build(base_dir=None, raw_dir=None) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=COLUMNS)
 
 
+DESCRIPTION = ("Road paths through the ordered stops of each synthetic route: shortest path (by length) on cached real "
+               f"OpenStreetMap graphs ({S.ATTRIBUTION}) or a labelled straight-line fallback. Routes/stops are synthetic "
+               "demonstration data; travel times are illustrative.")
+
+
+def assumptions() -> dict:
+    return {"bus_speed_factor": S.BUS_SPEED_FACTOR, "speed_fallbacks_kph": S.SPEED_FALLBACKS_KPH,
+            "dwell_min_per_stop": S.DWELL_MIN_PER_STOP, "detour_factor_fallback": S.STRAIGHT_LINE_DETOUR_FACTOR,
+            "max_snap_m": S.MAX_SNAP_M, "graphs_available": {k: N.graph_available(k) for k in S.FETCH_KINDS},
+            "supplements_composed_into_city": N.supplements_available()}
+
+
 def main(argv: list[str] | None = None) -> int:
     df = build()
-    prov = make_provenance(
-        "model_output", seed=None,
-        description="Road paths through the ordered stops of each synthetic route: shortest path (by length) on cached "
-                    f"real OpenStreetMap graphs ({S.ATTRIBUTION}) or a labelled straight-line fallback. Routes/stops are "
-                    "synthetic demonstration data; travel times are illustrative.",
-        assumptions={"bus_speed_factor": S.BUS_SPEED_FACTOR, "speed_fallbacks_kph": S.SPEED_FALLBACKS_KPH,
-                     "dwell_min_per_stop": S.DWELL_MIN_PER_STOP, "detour_factor_fallback": S.STRAIGHT_LINE_DETOUR_FACTOR,
-                     "max_snap_m": S.MAX_SNAP_M, "graphs_available": {k: N.graph_available(k) for k in S.GRAPH_KINDS}},
-    )
-    p = io.write_table(df, TABLE, "processed", provenance=prov)
+    p = io.write_table(df, TABLE, "processed", provenance=make_provenance("model_output", seed=None, description=DESCRIPTION,
+                                                                          assumptions=assumptions()))
     show = df[["route_id", "synthetic_length_km", "osm_length_km", "length_ratio", "travel_time_min", "path_source", "graph_kind"]]
     print(show.to_string(index=False))
     print(f"Wrote {p}")

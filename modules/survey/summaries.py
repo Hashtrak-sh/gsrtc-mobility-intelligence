@@ -108,3 +108,59 @@ def survey_meta(s: pd.DataFrame) -> dict[str, Any]:
     return {"n": int(len(s)), "n_private": int(len(private_mode_users(s))),
             "first": None if ts.empty or ts.isna().all() else ts.min().date().isoformat(),
             "last": None if ts.empty or ts.isna().all() else ts.max().date().isoformat(), "source_types": sources}
+
+
+# ---------------------------------------------------------------------------------------------- M5 cross-tabs
+INCOME_ORDER: tuple[str, ...] = ("low", "lower_middle", "middle", "upper_middle", "high")
+LABELS.update({"low": "Low income", "lower_middle": "Lower-middle income", "middle": "Middle income", "upper_middle": "Upper-middle income",
+               "high": "High income", "income_band": "Income band", "current_mode": "Current mode", "trip_purpose": "Trip purpose"})
+GROUP_COLUMNS = {"current_mode": "Current mode", "trip_purpose": "Trip purpose", "income_band": "Income band"}
+
+
+def _group_order(s: pd.DataFrame, group_col: str) -> list[str]:
+    present = [g for g in s[group_col].dropna().unique()]
+    if group_col == "income_band":
+        return [g for g in INCOME_ORDER if g in present]
+    return sorted(present, key=lambda g: (-int((s[group_col] == g).sum()), g))
+
+
+def group_sizes(s: pd.DataFrame, group_col: str) -> dict[str, int]:
+    """Respondents per group value (NaN group values excluded)."""
+    return {g: int((s[group_col] == g).sum()) for g in _group_order(s, group_col)}
+
+
+def mode_by_purpose(s: pd.DataFrame) -> pd.DataFrame:
+    """Trip purpose (rows) by current mode (columns): % of each mode's respondents. Columns are in descending group size."""
+    modes = _group_order(s, "current_mode")
+    out = {}
+    for m in modes:
+        g = s[s["current_mode"] == m]["trip_purpose"].dropna()
+        out[f"{label(m)} (n={len(g)})"] = g.value_counts(normalize=True).mul(100) if len(g) else pd.Series(dtype=float)
+    wide = pd.DataFrame(out).reindex([p for p in sorted(s["trip_purpose"].dropna().unique())]).fillna(0.0)
+    wide.index = [label(p) for p in wide.index]
+    return wide
+
+
+def multi_select_by_group(s: pd.DataFrame, column: str, group_col: str, *, private_only: bool = True, top: int = 8,
+                          min_group_n: int = 10) -> pd.DataFrame:
+    """Share (%) of each group's respondents naming each item of a JSON-list column (``reasons`` / ``switch_conditions``).
+
+    Rows = the ``top`` items overall (by number of mentions), columns = group values with at least ``min_group_n``
+    respondents (smaller groups are dropped, not shown with unstable percentages). ``private_only`` limits to car and
+    two-wheeler users, the group the questions are about.
+    """
+    base = private_mode_users(s) if private_only else s
+    overall = multi_select_summary(base, column)
+    if overall.empty:
+        return pd.DataFrame()
+    items = list(overall["category"].head(top))
+    cols = {}
+    for g in _group_order(base, group_col):
+        sub = base[base[group_col] == g]
+        if len(sub) < min_group_n:
+            continue
+        shares = multi_select_summary(sub, column).set_index("category")["share_pct"]
+        cols[label(g)] = shares.reindex(items).fillna(0.0)
+    wide = pd.DataFrame(cols, index=items)
+    wide.index = [label(i) for i in items]
+    return wide

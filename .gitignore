@@ -55,3 +55,5 @@ data/raw/*
 !data/raw/osm_places.provenance.json
 !data/raw/osm_graph_corridor.graphml
 !data/raw/osm_graph_corridor.provenance.json
+!data/raw/osm_graph_link_*.graphml
+!data/raw/osm_graph_link_*.provenance.json

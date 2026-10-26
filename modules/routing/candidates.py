@@ -24,6 +24,7 @@ from typing import Final
 import numpy as np
 import pandas as pd
 
+import config
 from modules.data import io
 from modules.data.provenance import make_provenance
 from modules.routing import network as N
@@ -32,16 +33,14 @@ from modules.routing import settings as S
 TABLE = "route_candidates"
 LABEL = "Illustrative candidate on simulated demand; not a recommendation or a validated plan"
 
-# Score weights (sum to 1). The orchestrator may move these into config.py. Each component is scaled 0..1 within the
-# candidate's corridor group (so the best candidate in a group gets 1.0 on that component).
-SCORE_WEIGHTS: Final[dict[str, float]] = {
-    "population_covered": 0.30,   # more residents within the walk buffer is better
-    "jobs_covered": 0.30,         # more jobs within the walk buffer is better
-    "time_efficiency": 0.20,      # 1 - travel_time_penalty (capped at 100 %)
-    "new_coverage": 0.20,         # 1 - overlap with existing route paths (duplicating existing service is worse)
-}
-OVERLAP_BUFFER_M: Final[float] = 150.0   # a candidate point within this distance of an existing route path counts as overlap
+# Score weights live in config.CANDIDATE_SCORE_WEIGHTS (versioned, sum to 1). Each component is scaled 0..1 within the
+# candidate's corridor group (the best candidate in a group gets 1.0 on that component).
+SCORE_WEIGHTS: Final[dict[str, float]] = config.CANDIDATE_SCORE_WEIGHTS.components()
+WEIGHT_VERSION: Final[str] = config.CANDIDATE_SCORE_WEIGHTS.weight_version
+OVERLAP_BUFFER_M: Final[float] = config.CANDIDATE_OVERLAP_BUFFER_M
 SAMPLE_STEP_M: Final[float] = 100.0
+NOT_COMPARABLE = "not_comparable_fallback"
+RANKED = "ranked"
 
 
 @dataclass(frozen=True)
@@ -128,12 +127,20 @@ def overlap_pct(path: list[list[float]], existing: list[list[list[float]]]) -> f
 
 # --------------------------------------------------------------------------- scoring
 def score_candidates(df: pd.DataFrame, weights: dict[str, float] = SCORE_WEIGHTS) -> pd.DataFrame:
-    """Add ``score`` (0-100) and ``score_breakdown_json``; components are scaled within each corridor group."""
+    """Add ``score`` (0-100), ``score_breakdown_json``, ``rank_flag`` and ``rank_in_corridor``.
+
+    Components are scaled within each corridor group using ONLY candidates routed on real OSM roads. A candidate whose
+    path is the straight-line fallback is flagged ``not_comparable_fallback``: its overlap/penalty/coverage are not
+    comparable, so it gets no score and no rank (``score`` is NaN) instead of competing with OSM candidates.
+    """
     if abs(sum(weights.values()) - 1.0) > 1e-9:
         raise ValueError(f"score weights must sum to 1, got {sum(weights.values())}")
     out = df.copy()
-    scores, breakdowns = [], []
-    for _, g in out.groupby("corridor"):
+    ok = out["path_source"].eq(N.SOURCE_OSM) if "path_source" in out.columns else pd.Series(True, index=out.index)
+    out["rank_flag"] = np.where(ok, RANKED, NOT_COMPARABLE)
+    out["score"] = np.nan
+    out["score_breakdown_json"] = None
+    for _, g in out[ok].groupby("corridor"):
         pm, jm = max(g["population_covered"].max(), 1), max(g["jobs_covered"].max(), 1)
         for i, r in g.iterrows():
             comp = {
@@ -143,21 +150,27 @@ def score_candidates(df: pd.DataFrame, weights: dict[str, float] = SCORE_WEIGHTS
                 "new_coverage": 1.0 - r["existing_route_overlap_pct"] / 100.0,
             }
             contrib = {k: round(weights[k] * v, 4) for k, v in comp.items()}
-            scores.append((i, round(100.0 * sum(contrib.values()), 2)))
-            breakdowns.append((i, json.dumps({
+            out.at[i, "score"] = round(100.0 * sum(contrib.values()), 2)
+            out.at[i, "score_breakdown_json"] = json.dumps({
                 "components_0_1": {k: round(v, 4) for k, v in comp.items()}, "weights": weights,
-                "weighted_contribution": contrib, "scaling": "population/jobs scaled to the max within the corridor group",
-            })))
-    out["score"] = pd.Series(dict(scores))
-    out["score_breakdown_json"] = pd.Series(dict(breakdowns))
+                "weight_version": WEIGHT_VERSION, "weighted_contribution": contrib,
+                "scaling": "population/jobs scaled to the max within the corridor group (OSM-routed candidates only)",
+            })
+    for i in out.index[~ok]:
+        out.at[i, "score_breakdown_json"] = json.dumps({
+            "not_comparable": "path is a straight-line fallback (no OSM road path); not scored or ranked",
+            "weights": weights, "weight_version": WEIGHT_VERSION})
+    out["rank_in_corridor"] = out.groupby("corridor")["score"].rank(ascending=False, method="min")
     return out
 
 
 # --------------------------------------------------------------------------- build
-def build(base_dir=None, raw_dir=None) -> pd.DataFrame:
+def build(base_dir=None, raw_dir=None, route_paths: pd.DataFrame | None = None) -> pd.DataFrame:
     stops = io.read_table("stops", "synthetic", base_dir)
     zones = io.read_table("zones", "synthetic", base_dir)
-    if io.table_exists("route_paths", "processed", base_dir):
+    if route_paths is not None:
+        rp = route_paths
+    elif io.table_exists("route_paths", "processed", base_dir):
         rp = io.read_table("route_paths", "processed", base_dir)
     else:
         from modules.routing import build_paths
@@ -183,20 +196,25 @@ def build(base_dir=None, raw_dir=None) -> pd.DataFrame:
     return score_candidates(pd.DataFrame(rows))
 
 
+DESCRIPTION = LABEL + ". Bounded to the demo corridors; not a network-wide optimisation."
+
+
+def assumptions() -> dict:
+    return {"score_weights": SCORE_WEIGHTS, "weight_version": WEIGHT_VERSION, "walk_buffer_m": S.WALK_BUFFER_M,
+            "overlap_buffer_m": OVERLAP_BUFFER_M,
+            "coverage_method": "zone centroid within buffer of path; whole-zone synthetic population/jobs counted",
+            "penalty_reference": "fastest (shortest-length) road path between the candidate's origin and destination",
+            "fallback_policy": "candidates on straight-line fallback paths are not scored or ranked (not_comparable_fallback)",
+            "candidates": [c.candidate_id for c in CANDIDATE_SPECS],
+            "graphs_available": {k: N.graph_available(k) for k in S.FETCH_KINDS}}
+
+
 def main(argv: list[str] | None = None) -> int:
     df = build()
-    prov = make_provenance(
-        "model_output", seed=None,
-        description=LABEL + ". Bounded to the demo corridors; not a network-wide optimisation.",
-        assumptions={"score_weights": SCORE_WEIGHTS, "walk_buffer_m": S.WALK_BUFFER_M, "overlap_buffer_m": OVERLAP_BUFFER_M,
-                     "coverage_method": "zone centroid within buffer of path; whole-zone synthetic population/jobs counted",
-                     "penalty_reference": "fastest (shortest-length) road path between the candidate's origin and destination",
-                     "candidates": [c.candidate_id for c in CANDIDATE_SPECS],
-                     "graphs_available": {k: N.graph_available(k) for k in S.GRAPH_KINDS}},
-    )
-    p = io.write_table(df, TABLE, "processed", provenance=prov)
+    p = io.write_table(df, TABLE, "processed", provenance=make_provenance("model_output", seed=None, description=DESCRIPTION,
+                                                                          assumptions=assumptions()))
     print(df[["candidate_id", "corridor", "travel_time_min", "population_covered", "jobs_covered", "travel_time_penalty_pct",
-              "existing_route_overlap_pct", "score", "path_source"]].to_string(index=False))
+              "existing_route_overlap_pct", "score", "rank_flag", "path_source"]].to_string(index=False))
     print(f"Wrote {p}")
     return 0
 

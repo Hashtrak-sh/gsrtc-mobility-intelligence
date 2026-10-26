@@ -182,3 +182,86 @@ ROUTE_SCORE_WEIGHTS.validate()
 # Planted-finding detection (analytics side): a route-hour counts as "high load" when its seat-weighted peak load factor
 # (max-link onboard / seats) exceeds this; standing passengers start above 1.0 on local buses.
 HIGH_PEAK_LOAD_FACTOR: Final[float] = 1.1
+
+# --------------------------------------------------------------------------
+# M4 route candidates (modules/routing/candidates.py). Illustrative; shown with every candidate score.
+# --------------------------------------------------------------------------
+@dataclass(frozen=True)
+class CandidateScoreWeights:
+    """Weights of the candidate-route score. Components are scaled 0-1 within a corridor group. NOT validated policy."""
+
+    weight_version: str = "cand-demo-v1"
+    population_covered: float = 0.30   # residents within the walk buffer of the path
+    jobs_covered: float = 0.30         # jobs within the walk buffer of the path
+    time_efficiency: float = 0.20      # 1 - travel_time_penalty (capped at 100 %)
+    new_coverage: float = 0.20         # 1 - overlap with existing route paths
+
+    def components(self) -> dict[str, float]:
+        d = asdict(self)
+        d.pop("weight_version")
+        return d
+
+    def total(self) -> float:
+        return sum(self.components().values())
+
+    def validate(self) -> None:
+        if abs(self.total() - 1.0) > 1e-9:
+            raise ValueError(f"Candidate score weights must sum to 1.0, got {self.total()}")
+
+
+CANDIDATE_SCORE_WEIGHTS: Final[CandidateScoreWeights] = CandidateScoreWeights()
+CANDIDATE_SCORE_WEIGHTS.validate()
+CANDIDATE_WALK_BUFFER_M: Final[float] = 800.0     # zone centroid within this distance of the path counts as covered
+CANDIDATE_OVERLAP_BUFFER_M: Final[float] = 150.0  # path point within this distance of an existing route path = overlap
+
+
+# ==========================================================================
+# M5 (competition, pricing, survey intelligence) - begin
+# ==========================================================================
+@dataclass(frozen=True)
+class CompetitiveGapWeights:
+    """Visible, versioned weights of the competitive gap score (0-100). Demo values, NOT validated policy.
+
+    Every component is scaled to 0-1 (see ``modules/competition/analysis.py``); score = 100 x sum(weight x component) over
+    the components that are available (a missing component is dropped and the rest re-weighted).
+    """
+
+    weight_version: str = "demo-comp-v1"
+    departure_slot_gap: float = 0.30   # private departures with no (or fewer) state departures in the clock hour
+    seat_share_gap: float = 0.20       # private seats exceeding state seats in the clock hour
+    premium_gap: float = 0.20          # private premium / AC-sleeper services with no state equivalent in the slot
+    fare_disadvantage: float = 0.10    # state tariff ABOVE the private median fare (0 when the state is cheaper)
+    review_theme_deficit: float = 0.20  # themes where state reviews are more negative than private ones (corridor level)
+
+    def components(self) -> dict[str, float]:
+        d = asdict(self)
+        d.pop("weight_version")
+        return d
+
+    def total(self) -> float:
+        return sum(self.components().values())
+
+    def validate(self) -> None:
+        if abs(self.total() - 1.0) > 1e-9:
+            raise ValueError(f"Competitive gap weights must sum to 1.0, got {self.total()}")
+
+
+COMPETITIVE_GAP_WEIGHTS: Final[CompetitiveGapWeights] = CompetitiveGapWeights()
+COMPETITIVE_GAP_WEIGHTS.validate()
+# Private bus types counted as "premium" for the premium-gap component; the state equivalent is a state AC_sleeper departure.
+PREMIUM_BUS_TYPES: Final[tuple[str, ...]] = ("AC_sleeper", "premium")
+STATE_PREMIUM_EQUIVALENT: Final[tuple[str, ...]] = ("AC_sleeper",)
+PREMIUM_GAP_SATURATION: Final[float] = 2.0        # premium_bus_gap of this many services scores 1.0
+FARE_DISADVANTAGE_SATURATION: Final[float] = 0.25  # fare_index - 1 of this size scores 1.0
+REVIEW_DEFICIT_SATURATION: Final[float] = 0.15    # mean per-theme negative-share deficit of this size scores 1.0
+REVIEW_MIN_PER_OPERATOR: Final[int] = 10          # fewer reviews per operator type on a corridor -> component missing
+# Fare scenario attached to the corridor-slot recommendation: the new service is priced at this share of the private median fare.
+COMPETITION_FARE_POSITION: Final[float] = 0.85
+
+# Survey switch-intent model (illustrative; modules/survey/mode_choice.py)
+SURVEY_MODEL_TEST_SIZE: Final[float] = 0.25
+SURVEY_MODEL_C: Final[float] = 1.0e6              # inverse L2 strength: effectively unregularised, so coefficients are comparable to the truth
+SURVEY_MODEL_LABEL: Final[str] = ("illustrative, conditional on the synthetic training setup - not a forecast of real behaviour")
+# ==========================================================================
+# M5 - end
+# ==========================================================================

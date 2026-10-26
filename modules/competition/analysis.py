@@ -1,8 +1,9 @@
 """Competition comparison built directly from source tables (state trips vs synthetic private competitor services).
 
 Illustrative only: competitor services, fares and the state tariff are synthetic demonstration values, not verified
-operator data. M5 adds the competitive gap score and review themes; this module covers departure-slot comparison, fare
-by bus type and the pricing what-if baseline.
+operator data. This module covers departure-slot comparison, fare by bus type and the pricing what-if baseline; the
+``competition_analysis`` table and competitive gap score (M5) live in ``modules/competition/gap_score.py``. Competitor
+departure times are from the corridor origin (Rajkot) only; the opposite direction is assumed to mirror them (M1).
 
 Pricing baseline unit: **full-journey equivalents per average day** = estimated passenger-km / route length_km. Dividing
 by seats offered per day then gives exactly the route load factor (passenger-km / seat-km), so the scenario's baseline

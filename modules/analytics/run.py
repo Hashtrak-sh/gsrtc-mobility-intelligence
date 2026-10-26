@@ -16,11 +16,13 @@ import config
 from modules.analytics import cctv as CC
 from modules.analytics import findings as FD
 from modules.analytics import gaps, occupancy, od, recommendations, route_kpis, scoring
+from modules.competition import gap_score as CG
 from modules.data import io
 from modules.data.provenance import make_provenance
+from modules.survey import mode_choice
 
 OUTPUT_TABLES = ("route_kpis", "route_summary", "hourly_demand_supply", "stop_occupancy", "od_flows", "route_scores",
-                 "recommendations", "cctv_hourly_profile")
+                 "recommendations", "cctv_hourly_profile", "competition_analysis")
 
 DESCRIPTIONS = {
     "route_kpis": "Route x service-date KPIs derived from synthetic tickets/trips. Load factor = passenger-km / seat-km.",
@@ -31,6 +33,7 @@ DESCRIPTIONS = {
     "route_scores": "Transparent rule-based route potential score (demo-v1 weights). Not an AI prediction.",
     "recommendations": "Rule-generated recommendations with evidence, assumptions, expected impact and constraints.",
     "cctv_hourly_profile": "Mean inbound persons per hour from SYNTHETIC CCTV counts.",
+    "competition_analysis": "Corridor x hour x day-type state vs synthetic private departures, fare index (normal/surge) and competitive gap score (demo-comp-v1 weights). Competitor departures are from Rajkot only; both directions assumed to mirror.",
 }
 
 
@@ -48,12 +51,13 @@ def compute_all(t: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
     summary = route_kpis.route_summary(tm, t["routes"], t["trips"])
     hourly = gaps.hourly_demand_supply(ts, profile, t["routes"], t["stops"], t["competitor_services"])
     stop_occ = occupancy.stop_occupancy(ts, profile)
-    flows = od.od_flows(legs, t["trips"], t["stops"])
+    flows = od.od_flows(legs, t["trips"], t["stops"], t["routes"])
     scores = scoring.route_scores(summary, hourly, t["routes"], t["route_stops"], t["stops"], t["zones"], t["trips"])
-    recs = recommendations.generate_recommendations(hourly, summary, scores, t["routes"], ts, t["stops"], t["competitor_services"], legs)
+    comp = CG.competition_analysis(t["trips"], t["competitor_services"], t["routes"], t["reviews"])
+    recs = recommendations.generate_recommendations(hourly, summary, scores, t["routes"], ts, t["stops"], t["competitor_services"], legs, comp)
     cctv = CC.cctv_hourly_profile(t["cctv_counts"], t["trips"])
     return {"route_kpis": kpis, "route_summary": summary, "hourly_demand_supply": hourly, "stop_occupancy": stop_occ,
-            "od_flows": flows, "route_scores": scores, "recommendations": recs, "cctv_hourly_profile": cctv,
+            "od_flows": flows, "route_scores": scores, "recommendations": recs, "cctv_hourly_profile": cctv, "competition_analysis": comp,
             "trips_sum": ts, "legs": legs}
 
 
@@ -66,6 +70,8 @@ def assumptions() -> dict:
         "private_market_occupancy_assumption": config.PRIVATE_MARKET_OCCUPANCY_ASSUMPTION,
         "service_target_load_factor": config.SERVICE_TARGET_LOAD_FACTOR,
         "state_capture_share_assumption": config.STATE_CAPTURE_SHARE,
+        "competitive_gap_weights": config.COMPETITIVE_GAP_WEIGHTS.components(),
+        "competitive_gap_weight_version": config.COMPETITIVE_GAP_WEIGHTS.weight_version,
         "route_score_weights": config.ROUTE_SCORE_WEIGHTS.components(),
         "weight_version": config.ROUTE_SCORE_WEIGHTS.weight_version,
         "ticket_revenue_only": True, "contribution_is_not_profit": True,
@@ -93,6 +99,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{config.SIMULATION_BADGE_TEXT}. Processed tables written in {time.time() - t0:.1f}s:")
     for n in OUTPUT_TABLES:
         print(f"  {n:22s} {len(res[n]):>7,d} rows x {res[n].shape[1]} cols")
+    model = mode_choice.run_and_write(tables["survey_responses"], args.base_dir)
+    if model is None:
+        print("Survey switch-intent model: skipped (see note above; optional, needs scikit-learn).")
+    else:
+        m = model["metrics"].set_index("metric")
+        print(f"Survey switch-intent model written ({mode_choice.TABLE_COEF}, {mode_choice.TABLE_METRICS}); test ROC-AUC "
+              f"{m.loc['roc_auc', 'model']:.3f} (baseline 0.5), Brier {m.loc['brier_score', 'model']:.3f} "
+              f"(baseline {m.loc['brier_score', 'baseline']:.3f}). {mode_choice.ILLUSTRATIVE_LABEL}.")
     print("Planted findings (detected from analytics outputs):")
     for f in FD.detect_planted(res, tables):
         print(f"  [{'PASS' if f.ok else 'FAIL'}] {f.name}: {f.detail}")

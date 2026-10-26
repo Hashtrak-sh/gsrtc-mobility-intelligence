@@ -4,11 +4,9 @@ Semantics (identical on every page that shows the filter):
 
 * **Corridor** - ``All`` (every route), ``Rajkot local network`` (local routes L01-L10) or one intercity corridor
   (routes whose ``routes.corridor`` equals it). Route-level tables are filtered by route. Corridor-level rows of
-  ``hourly_demand_supply`` are filtered by ``corridor`` (and dropped for the local network). ``od_flows`` has no route
-  column, so an O-D pair belongs to a scope when both zones are served by the scope's routes and, for an intercity
-  corridor, the pair is not entirely inside the zones served by local routes. Consequence: a pair served by several
-  corridors (e.g. Rajkot-Junagadh, on the Somnath and Junagadh corridors) appears under each, so corridor O-D totals can exceed that
-  corridor's route boardings; the local network and All scopes reconcile with route_summary.
+  ``hourly_demand_supply`` are filtered by ``corridor`` (and dropped for the local network). ``od_flows`` carries ``route_id``
+  (M5), so it is scoped by route membership like every other route-level table: a zone pair served by several corridors is
+  counted once per route that carried the passengers, and corridor O-D totals equal that corridor's route boardings.
 * **Day type** - ``weekday`` / ``weekend`` / ``festival``. Applies to tables built per day type (``hourly_demand_supply``,
   ``stop_occupancy``, ``od_flows``, ``cctv_hourly_profile``). Route-level KPIs (``route_summary``, ``route_scores``)
   always span the whole 42-day synthetic period, so every KPI agrees across pages; recommendations are pre-computed for
@@ -34,10 +32,6 @@ ALL = "All"
 LOCAL = "Rajkot local network"
 DAY_TYPES: tuple[str, ...] = ("weekday", "weekend", "festival")
 CORRIDOR_OPTIONS: tuple[str, ...] = (ALL, LOCAL, *config.INTERCITY_CORRIDORS)
-
-OD_CORRIDOR_NOTE = ("O-D flows are not tagged by route. For an intercity corridor, any pair whose two zones both lie on that corridor's routes is included, "
-                    "so pairs that other corridors also serve (for example Rajkot to Junagadh) appear under each of them and the total can exceed "
-                    "the corridor's route boardings.")
 
 KEY_CORRIDOR = "flt_corridor"
 KEY_DAY = "flt_day_type"
@@ -129,21 +123,18 @@ def zones_for_routes(route_stops: pd.DataFrame, stops: pd.DataFrame, ids: list[s
     return set(stops.loc[stops["stop_id"].isin(sid), "zone_id"])
 
 
-def filter_od(od: pd.DataFrame, f: Filters, routes: pd.DataFrame, route_stops: pd.DataFrame, stops: pd.DataFrame,
-              *, hours: bool = True) -> pd.DataFrame:
-    """Apply day type, hours and corridor scope (zone membership; see module docstring) to ``od_flows``."""
+def filter_od(od: pd.DataFrame, f: Filters, routes: pd.DataFrame, route_stops: pd.DataFrame | None = None,
+              stops: pd.DataFrame | None = None, *, hours: bool = True) -> pd.DataFrame:
+    """Apply day type, hours and corridor scope (route membership via ``od_flows.route_id``) to ``od_flows``.
+
+    ``route_stops`` and ``stops`` are accepted for backward compatibility and are no longer needed.
+    """
+    if "route_id" not in od.columns:
+        raise ValueError("od_flows has no route_id column; re-run `python -m modules.analytics.run`")
     o = od[od["day_type"] == f.day_type]
     if hours:
         o = o[_hours(o, f)]
-    if f.corridor == ALL:
-        return o
-    zs = zones_for_routes(route_stops, stops, route_ids(routes, f.corridor))
-    inside = o["origin_zone_id"].isin(zs) & o["dest_zone_id"].isin(zs)
-    if f.corridor == LOCAL:
-        return o[inside]
-    local_zs = zones_for_routes(route_stops, stops, route_ids(routes, LOCAL))
-    both_local = o["origin_zone_id"].isin(local_zs) & o["dest_zone_id"].isin(local_zs)
-    return o[inside & ~both_local]
+    return filter_by_routes(o, routes, f.corridor)
 
 
 def filter_cctv(prof: pd.DataFrame, f: Filters) -> pd.DataFrame:

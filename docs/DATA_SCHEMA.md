@@ -208,6 +208,7 @@ Semantics (M2): **`service_date` is null** because every value is for the *avera
 ### `od_flows`
 Contract columns: `origin_zone_id`, `dest_zone_id`, `hour`, `passenger_count`, `estimated_passenger_km`, `source_type`.
 Added in M2: `day_type`, `passengers_total`, `passenger_km_total`, `n_days`, `is_intra_zone`. `hour` = boarding hour (ticket `timestamp`); `passenger_count` and `estimated_passenger_km` are **per average day of the `day_type`** (= totals / `n_days`); passenger-km = passengers x route km between the boarding and alighting stop.
+Added in M5: `route_id` and `corridor` (the route's `routes.corridor`, null for local routes). **The grain is now zone pair x route x day type x boarding hour.** Corridor / network scope is route membership, so a zone pair shared by several corridors is no longer counted under each of them. Reconciliation (tested for every route and corridor, per day type): `sum(passenger_count)` over a route's rows = `route_summary.boardings_per_day_<day_type>` of that route, and `sum(passengers_total)` = the route's ticketed boardings.
 
 ### `route_scores`
 Contract columns: `route_id`, `demand_score`, `unmet_demand_score`, `load_factor_score`, `reliability_gap_score`, `revenue_potential_score`, `social_importance_score`, `feasibility_score`, `total_score`, `weight_version`, `explanation`, `source_type`.
@@ -219,6 +220,12 @@ Added in M2: `route_type`, `rank`, `rank_within_type`, `minimum_service`, `prote
 ### `route_candidates`
 `candidate_id`, `corridor`, `path_geojson`, `travel_time_min`, `population_covered`, `jobs_covered`, `travel_time_penalty_pct`, `existing_route_overlap_pct`, `score`, `score_breakdown_json`, `source_type`.
 
+**M4 additions (additive; no contract column renamed or removed).** Extra columns: `name`, `stop_ids_json` (ordered stop ids; all resolve to `stops`), `origin_stop_id`, `destination_stop_id`, `length_km`, `direct_travel_time_min` (fastest road path origin to destination; the reference for `travel_time_penalty_pct`), `zones_covered_json`, `walk_buffer_m`, `path_source` (`openstreetmap` | `straight_line_fallback`), `rank_flag` (`ranked` | `not_comparable_fallback`), `rank_in_corridor`, `label` (illustrative disclaimer). `source_type = model_output`. `score` (0-100) and `score_breakdown_json` use `config.CANDIDATE_SCORE_WEIGHTS` (versioned; components scaled within the corridor group). A candidate on a straight-line fallback path is **not scored or ranked** (`score` null, `rank_flag = not_comparable_fallback`). Coverage = zone centroid within `config.CANDIDATE_WALK_BUFFER_M` of the path, whole-zone synthetic population/jobs counted. Candidates are a bounded, hand-specified set for the demo corridors, illustrative only.
+Migration: tables written before M4 (if any) lack the extra columns; rerun `python -m modules.routing.candidates` (or `python -m modules.routing.run`, which rebuilds both M4 tables from cached graphs).
+
+### `route_paths` (new in M4)
+`route_id`, `path_geojson` (JSON LineString, [lon, lat]), `osm_length_km`, `synthetic_length_km` (= `routes.length_km`), `length_ratio` (osm / synthetic), `travel_time_min` (illustrative: OSM speeds x bus factor + dwell), `path_source` (`openstreetmap` | `straight_line_fallback`), `graph_kind` (`city`, `corridor`, `city+corridor`, null), `note` (why a fallback was used), `source_type = model_output`. When `path_source` is the fallback, `osm_length_km` is a haversine x 1.3 estimate and NOT OSM-derived. Built from cached graphs only (`python -m modules.routing.fetch_network` downloads them; nothing else does). Road geometry is real OpenStreetMap data (c) OpenStreetMap contributors, ODbL; routes and stops are synthetic.
+
 ### `predictions`
 `entity_type`, `entity_id`, `service_date`, `hour`, `actual_demand`, `predicted_demand`, `lower_bound`, `upper_bound`, `model_name`, `model_version`, `source_type`, `limitations`.
 
@@ -226,8 +233,26 @@ Added in M2: `route_type`, `rank`, `rank_within_type`, `minimum_service`, `prote
 Contract columns: `recommendation_id`, `priority`, `category`, `title`, `route_id`, `location_id`, `time_window`, `action`, `evidence_json`, `assumptions_json`, `expected_impact_json`, `constraints_json`, `confidence_label`, `source_type`.
 Added in M2: `priority_rank` (1 = first), `day_type`, `corridor`, `direction`. `category` in `add_service_peak`, `add_service_corridor_slot`, `add_capacity_weekend`, `protect_minimum_service` (minimum-service routes are only ever *retained and reviewed*). `time_window` is `HH:00-HH:00` built from the hours of the evidence rows, so it equals the gap-table window exactly (`protect_minimum_service` uses `all service hours`). `evidence_json` = `{table, filter, gap_rows[], figures, route_summary, route_score}`; `expected_impact_json` = `scenarios.service_frequency_scenario` output.
 
-### `competition_analysis`
-`route_pair`, `hour`, `state_departures`, `private_departures`, `state_seats`, `private_seats`, `state_fare_inr`, `median_private_fare_inr`, `fare_index`, `premium_bus_gap`, `review_theme_summary`, `competitive_gap_score`, `source_type`.
+### `competition_analysis` (M5)
+One row per intercity corridor (`route_pair`) x clock `hour` x `day_type`, for hours with at least one state or private departure. **Competitor departures are from the corridor origin (Rajkot) only; both directions are assumed to mirror those slots (M1 convention), so state departures are the OUTBOUND (from Rajkot) trips.** Competitors are synthetic.
+Contract columns: `route_pair`, `hour`, `state_departures`, `private_departures`, `state_seats`, `private_seats`, `state_fare_inr`, `median_private_fare_inr`, `fare_index`, `premium_bus_gap`, `review_theme_summary`, `competitive_gap_score`, `source_type`.
+Added in M5: `day_type`, `median_private_surge_fare_inr`, `fare_index_surge`, the five 0-1 component columns `departure_slot_gap`, `seat_share_gap`, `premium_gap_component`, `fare_disadvantage`, `review_theme_deficit`, `missing_components`, `weight_version`, `weights_json`, `assumptions_json`.
+
+| Column | Definition |
+|---|---|
+| `state_departures`, `state_seats` | outbound trips (and their seats) of the corridor's state routes in the clock hour / number of service dates of the day type (average day) |
+| `private_departures`, `private_seats` | competitor services of the corridor and day type departing in the hour (one row per service in `competitor_services`) |
+| `state_fare_inr` | median over the hour's private services of the illustrative state tariff for the SAME bus class (`premium` -> state `AC_sleeper`; no such state class -> not counted, NaN if none); with no private service, the mean tariff of the state routes departing that hour |
+| `median_private_fare_inr`, `fare_index` | median private `base_fare_inr` in the hour; `fare_index = state_fare_inr / median_private_fare_inr` (NaN where either side is missing; below 1.0 = state cheaper) |
+| `median_private_surge_fare_inr`, `fare_index_surge` | median private `surge_fare_inr` of the day type (illustrative peak fare); the state tariff does not surge |
+| `premium_bus_gap` | count of private services of type `AC_sleeper` / `premium` in the hour when no state `AC_sleeper` trip departs in that hour, else 0 |
+| `review_theme_summary` | JSON `{method, route_pair, state: {n_reviews, themes: {theme: {positive, negative}}}, private: {...}}` for the corridor (method `generator_tags` = `reviews.themes`; the keyword tagger of `modules/survey/themes.py` is the deterministic alternative) |
+| `competitive_gap_score` | 0-100 = 100 x sum(weight x component) over the available components (weights in `config.COMPETITIVE_GAP_WEIGHTS`, version `demo-comp-v1`, copied to `weights_json`): departure-slot gap 0.30 (1 if private departs and state has none, else max(0, p - s) / p), seat-share gap 0.20 (max(0, ps - ss) / (ps + ss)), premium-bus gap 0.20 (`premium_bus_gap` / 2, capped), fare disadvantage 0.10 ((`fare_index` - 1) / 0.25 clipped to 0-1; state fare above private only), review-theme deficit 0.20 (corridor mean over themes of max(0, state - private negative-mention share) / 0.15, capped; NaN if either operator type has < 10 reviews). A NaN component is dropped and the rest re-weighted (listed in `missing_components`). Hours with no private departure score 0. Index with visible weights, not a forecast |
+
+### `survey_model_coefficients`, `survey_model_metrics` (new in M5; OPTIONAL, `source_type = model_output`)
+Written by `python -m modules.survey.mode_choice` (also called by `python -m modules.analytics.run` when scikit-learn is installed; otherwise skipped with a note). Illustrative logistic regression of `survey_responses.switch_intent` on the nine switch conditions, `mode_car`, `purpose_work`, `income_high`; trained on a stratified train split (seed 42), evaluated on the test split. **Illustrative, conditional on the synthetic training setup - not a forecast of real behaviour.**
+* `survey_model_coefficients`: `feature`, `label`, `true_coefficient` (the generator's TRUE coefficient from `modules/data_gen/constants.py`; 0 for conditions that do not enter the mechanism), `coef_train_fit`, `coef_full_fit` (all labelled rows; used by the page scenario), `abs_error_full_fit`, `sign_matches_truth` (null where the true value is 0), `source_type`. Includes the `intercept` row.
+* `survey_model_metrics`: `metric` (`accuracy`, `roc_auc`, `brier_score`), `model`, `baseline` (majority class / chance / training base rate), `higher_is_better`, `baseline_definition`, `beats_baseline`, `n_train`, `n_test`, `source_type`.
 
 ## M1 conventions (generator contract)
 
@@ -253,6 +278,14 @@ Added in M2: `priority_rank` (1 = first), `day_type`, `corridor`, `direction`. `
 
 ## Migration notes
 
+### M5 (competition, pricing, survey intelligence)
+| Table | Change |
+|---|---|
+| `od_flows` | + `route_id`, `corridor`; grain is now zone pair x route x day type x hour (4,737 rows at seed 42); sums over all rows are unchanged, so All-scope totals do not change, but corridor scopes now equal route boardings instead of double counting shared pairs |
+| `competition_analysis` | **new** (contract columns + M5 extensions, see above) |
+| `survey_model_coefficients`, `survey_model_metrics` | **new, optional** (`model_output`) |
+| `recommendations` | no schema change; the corridor-slot recommendation (REC-001) evidence gains a `competition` block and `expected_impact_json` a `fare_scenario` |
+
 ### M2 (deterministic analytics milestone)
 Derived tables (all additive; no source table or published column changed):
 
@@ -267,7 +300,7 @@ Derived tables (all additive; no source table or published column changed):
 | `recommendations` | + `priority_rank`, `day_type`, `corridor`, `direction` |
 | `cctv_hourly_profile` | **new table** |
 
-Terminology fix: M1 documents called `boardings / seats` a "load factor". It is now named **boardings per seat** (turnover); load factors are `peak_load_factor` and `load_factor_pct` as defined above. `competition_analysis` is not produced in M2 (M5 owns it).
+Terminology fix: M1 documents called `boardings / seats` a "load factor". It is now named **boardings per seat** (turnover); load factors are `peak_load_factor` and `load_factor_pct` as defined above. `competition_analysis` was added in M5.
 
 ### M1 (synthetic data milestone)
 Published-table changes relative to the M0 contract (all additive; no column renamed or removed):

@@ -9,7 +9,8 @@ osmnx>=2.0
 networkx>=3.2
 # h3>=4.0          # optional hex grid (config.H3_RESOLUTION)
 
-# --- ml (Milestone 6): ridership baseline model ---
+# --- ml (Milestone 5: illustrative survey switch-intent model, `python -m modules.survey.mode_choice`; Milestone 6: ridership baseline) ---
+# The app starts and every page renders without it; only (re)fitting the survey model needs scikit-learn.
 scikit-learn>=1.4
 # shap>=0.45       # only if a compatible fitted model exists
 # prophet>=1.1     # only if enough synthetic history exists

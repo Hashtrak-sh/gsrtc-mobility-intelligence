@@ -432,3 +432,86 @@ def day_type_profile(df: pd.DataFrame) -> go.Figure:
     _hour_ticks(fig, sorted(df["hour"].astype(int).unique()))
     fig.update_yaxes(title_text="Mean inbound persons per hour (synthetic)", rangemode="tozero")
     return style(fig, height=300)
+
+
+# ---------------------------------------------------------------------------
+# M5: competition scores, review themes, fare index, survey cross-tabs and model coefficients
+# ---------------------------------------------------------------------------
+def gap_score_chart(rows: pd.DataFrame, weights: dict[str, float], labels: dict[str, str], col_map: dict[str, str]) -> go.Figure:
+    """Stacked bars per clock hour: weight x component (0-1) x 100, so the stack height is the competitive gap score.
+    ``rows``: hour + the component columns named in ``col_map`` (weight key -> column)."""
+    if rows.empty:
+        return empty_figure("No competition data for this corridor and day type")
+    r = rows.sort_values("hour")
+    fig = go.Figure()
+    for i, (k, w) in enumerate(weights.items()):
+        v = r[col_map[k]].fillna(0.0) * w * 100
+        fig.add_bar(x=r["hour"], y=v, name=f"{labels[k]} ({w:.0%})", marker_color=SERIES[i % len(SERIES)],
+                    hovertemplate="%{x:02d}:00 " + labels[k] + ": %{y:.1f} points<extra></extra>")
+    fig.update_layout(barmode="stack")
+    _hour_ticks(fig, [int(h) for h in r["hour"]])
+    fig.update_yaxes(title_text="Competitive gap score (0-100)", range=[0, 100])
+    return style(fig, height=360)
+
+
+def fare_index_chart(view: pd.DataFrame) -> go.Figure:
+    """State tariff / private median fare by hour: normal (base) vs illustrative surge. ``view``: hour, fare_index, fare_index_surge."""
+    if view.empty:
+        return empty_figure("No hour with both a state tariff and a private fare for this corridor and day type")
+    v = view.sort_values("hour")
+    fig = go.Figure()
+    fig.add_scatter(x=v["hour"], y=v["fare_index"], name="Normal (private base fare)", mode="lines+markers", line=dict(color=ACCENT, width=3),
+                    hovertemplate="%{x:02d}:00 state / private base: %{y:.2f}<extra></extra>")
+    fig.add_scatter(x=v["hour"], y=v["fare_index_surge"], name="Illustrative surge (private peak fare)", mode="lines+markers",
+                    line=dict(color=WARN, width=3, dash="dot"), hovertemplate="%{x:02d}:00 state / private surge: %{y:.2f}<extra></extra>")
+    fig.add_hline(y=1.0, line_color=GREY, annotation_text="1.0 = same fare", annotation_position="top left")
+    _hour_ticks(fig, [int(h) for h in v["hour"]])
+    fig.update_yaxes(title_text="State fare / private median fare", rangemode="tozero")
+    return style(fig, height=340)
+
+
+def theme_negative_chart(comp: pd.DataFrame) -> go.Figure:
+    """Grouped horizontal bars: share of reviews with a negative mention of each theme, state vs private.
+    ``comp``: label, state_negative_share, private_negative_share (fractions)."""
+    if comp.empty or comp[["state_negative_share", "private_negative_share"]].isna().all().all():
+        return empty_figure("No reviews for this selection")
+    d = comp.assign(_s=comp["state_negative_share"].fillna(0)).sort_values("_s")
+    fig = go.Figure()
+    fig.add_bar(y=d["label"], x=d["state_negative_share"] * 100, name="State (GSRTC demo)", orientation="h", marker_color=ACCENT,
+                hovertemplate="%{y}: %{x:.0f}% of state reviews negative<extra></extra>")
+    fig.add_bar(y=d["label"], x=d["private_negative_share"] * 100, name="Private (synthetic)", orientation="h", marker_color=GREY,
+                hovertemplate="%{y}: %{x:.0f}% of private reviews negative<extra></extra>")
+    fig.update_layout(barmode="group")
+    fig.update_xaxes(title_text="Reviews with a negative mention of the theme (%)", ticksuffix="%", rangemode="tozero")
+    fig.update_yaxes(title_text=None, automargin=True)
+    return style(fig, height=380)
+
+
+def share_heatmap(m: pd.DataFrame, *, title: str | None = None) -> go.Figure:
+    """Annotated heat map of shares in % (rows = items, columns = respondent groups)."""
+    if m.empty:
+        return empty_figure("No responses for this cross-tab")
+    fig = go.Figure(go.Heatmap(
+        z=m.values, x=[str(c) for c in m.columns], y=list(m.index), zmin=0, zmax=max(100.0, float(np.nanmax(m.values))), xgap=2, ygap=2,
+        colorscale=SEQ_SCALE, text=np.round(m.values, 0), texttemplate="%{text:.0f}%", textfont=dict(size=12),
+        hovertemplate="%{y}<br>%{x}: %{z:.1f}%<extra></extra>", colorbar=dict(title=dict(text="% of group", side="right"), thickness=12)))
+    fig.update_yaxes(autorange="reversed", automargin=True)
+    fig.update_xaxes(side="top")
+    return style(fig, height=max(260, 34 * len(m) + 110), title=title)
+
+
+def coefficient_chart(coef: pd.DataFrame) -> go.Figure:
+    """True generating coefficient vs fitted coefficient (log-odds), excluding the intercept. ``coef``: label, true_coefficient, coef_full_fit."""
+    c = coef[coef["feature"] != "intercept"]
+    if c.empty:
+        return empty_figure("No model coefficients")
+    c = c.iloc[::-1]
+    fig = go.Figure()
+    fig.add_bar(y=c["label"], x=c["true_coefficient"], name="True generating coefficient", orientation="h", marker_color=GREY_LIGHT,
+                marker_line_color=GREY, marker_line_width=1, hovertemplate="%{y}: true %{x:.2f}<extra></extra>")
+    fig.add_bar(y=c["label"], x=c["coef_full_fit"], name="Fitted logistic coefficient", orientation="h", marker_color=ACCENT,
+                hovertemplate="%{y}: fitted %{x:.2f}<extra></extra>")
+    fig.update_layout(barmode="group")
+    fig.update_xaxes(title_text="Coefficient (log-odds of switching)", zeroline=True)
+    fig.update_yaxes(title_text=None, automargin=True)
+    return style(fig, height=max(380, 36 * len(c) + 120))

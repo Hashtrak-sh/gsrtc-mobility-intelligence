@@ -213,7 +213,7 @@ def flow_meaning(total: float, top: pd.Series | None, names: dict[str, str], pea
 
 
 def competition_meaning(corridor: str, day_type: str, gap_hours: list[int], private_dep_in_gap: float, fare_row: pd.Series | None,
-                        res: dict | None) -> str:
+                        res: dict | None, top_gap: pd.Series | None = None, theme: pd.Series | None = None) -> str:
     if gap_hours:
         wins = ", ".join(f"{fmt.hhmm(a)}-{fmt.hhmm(b)}" for a, b in fmt.contiguous_windows(gap_hours))
         a = (f"On {corridor} ({day_type}) private operators depart in {wins} when the state timetable has no departure "
@@ -227,7 +227,15 @@ def competition_meaning(corridor: str, day_type: str, gap_hours: list[int], priv
     if res is not None:
         c = (f"In the what-if, a fare of {fmt.inr(res['new_fare_inr'], 0)} ({res['fare_change_pct']:+.0f}%) changes daily ticket revenue by "
              f"{fmt.inr(res['revenue_change_inr'])} at an assumed elasticity of {res['elasticity']:.1f}; the elasticity is an assumption, not a fitted value. ")
-    return a + b + c + "Competitor services and fares are synthetic."
+    g = ""
+    if top_gap is not None and pd.notna(top_gap.get("competitive_gap_score")):
+        g = (f"The highest competitive gap score is {top_gap['competitive_gap_score']:.0f} of 100 at {fmt.hhmm(top_gap['hour'])} "
+             f"(index with visible weights, not a forecast). ")
+    t = ""
+    if theme is not None and pd.notna(theme.get("deficit")):
+        t = (f"Reviews are more often negative for state services than private ones on {theme['label'].lower()} "
+             f"({fmt.pct(theme['state_negative_share'] * 100, 0)} vs {fmt.pct(theme['private_negative_share'] * 100, 0)} of reviews). ")
+    return a + g + b + t + c + "Competitor services, fares and reviews are synthetic."
 
 
 def infra_meaning(s: dict) -> str:
@@ -250,3 +258,14 @@ def reports_meaning(n_tables: int, total_rows: int, scope: str) -> str:
     return (f"{n_tables} table(s) are ready for CSV download, filtered to the current scope ({scope}); {fmt.number(total_rows)} rows in total. "
             f"Each file starts with provenance lines (source, seed, generation time, filters and limitations), and the numbers equal "
             f"those shown on the dashboard pages for the same filters.")
+
+
+def survey_model_note(scn: pd.DataFrame, metrics: pd.DataFrame, persona: str) -> str:
+    """Plain-language reading of the illustrative switch model for the selected persona (never a forecast)."""
+    base, sel = scn.iloc[0], scn.iloc[1]
+    m = metrics.set_index("metric")
+    return (f"For {persona}, the illustrative model gives a switching probability of {fmt.pct(sel['model_probability'] * 100, 0)} when the selected "
+            f"conditions are met, against {fmt.pct(base['model_probability'] * 100, 0)} when none is; the synthetic generator's own true mechanism gives "
+            f"{fmt.pct(sel['true_generator_probability'] * 100, 0)} and {fmt.pct(base['true_generator_probability'] * 100, 0)}. On held-out synthetic respondents "
+            f"the model's ROC-AUC is {m.loc['roc_auc', 'model']:.2f} (chance 0.50), so it separates switchers only modestly. "
+            f"These are illustrative probabilities conditional on the synthetic training setup, not a forecast of real behaviour.")

@@ -56,23 +56,37 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def _prepare(G):
-    """Add speeds / travel times (documented defaults); keep the largest strongly connected component."""
+    """Add speeds / travel times (documented defaults) to a raw graph."""
     G = ox.add_edge_speeds(G, hwy_speeds=S.SPEED_FALLBACKS_KPH, fallback=S.DEFAULT_SPEED_KPH)
     for _, _, d in G.edges(data=True):
         d["speed_kph"] = float(d["speed_kph"]) * S.BUS_SPEED_FACTOR
-    G = ox.add_edge_travel_times(G)
+    return ox.add_edge_travel_times(G)
+
+
+def _largest_scc(G):
     comp = max(nx.strongly_connected_components(G), key=len)
     return G.subgraph(comp).copy()
 
 
+def supplements_available(raw_dir: Path | None = None) -> list[str]:
+    return [k for k in S.SUPPLEMENT_BBOXES if graph_path(k, raw_dir).is_file()]
+
+
 @lru_cache(maxsize=4)
 def _load_cached(kind: str, raw_dir: str | None):
-    p = graph_path(kind, Path(raw_dir) if raw_dir else None)
-    return _prepare(ox.load_graphml(p))  # reads the file only; never touches the network
+    rd = Path(raw_dir) if raw_dir else None
+    G = _prepare(ox.load_graphml(graph_path(kind, rd)))  # reads files only; never touches the network
+    if kind == "city":  # compose the supplementary Metoda / Shapar link graphs when cached
+        parts = [G] + [_prepare(ox.load_graphml(graph_path(k, rd))) for k in supplements_available(rd)]
+        G = nx.compose_all(parts) if len(parts) > 1 else G
+    return _largest_scc(G)
 
 
 def load_graph(kind: str, raw_dir: Path | None = None):
-    """Cached graph (lru_cache) with ``length`` (m), ``speed_kph`` and ``travel_time`` (s) on edges; None if unavailable."""
+    """Cached graph (lru_cache) with ``length`` (m), ``speed_kph`` and ``travel_time`` (s) on edges; None if unavailable.
+
+    ``"city"`` is the drive graph composed with the supplementary link graphs if they are cached.
+    """
     if not graph_available(kind, raw_dir):
         return None
     return _load_cached(kind, str(raw_dir) if raw_dir else None)

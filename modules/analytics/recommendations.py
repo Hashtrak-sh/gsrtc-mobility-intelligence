@@ -7,6 +7,11 @@ Categories
 * ``add_capacity_weekend``      intercity buses at their hard seat cap on recurring (weekday/weekend) days.
 * ``protect_minimum_service``   minimum-service routes: retain and review the timetable. Never a removal action.
 
+M5: when the ``competition_analysis`` table is supplied, the corridor-slot recommendation (REC-001 style) is ENRICHED, not
+duplicated: its evidence gains a ``competition`` block (competitive gap score, fare index normal/surge, premium-bus gap,
+review-theme deficit) and its expected impact a ``fare_scenario`` (``scenarios.pricing_scenario`` for the new departures
+priced at ``config.COMPETITION_FARE_POSITION`` of the private median fare, with elasticity sensitivity).
+
 Every record has evidence (table, filter, the exact gap rows used), assumptions, an expected impact computed with
 ``scenarios.service_frequency_scenario`` and constraints. ``time_window`` is built from the evidence rows' hours
 (``hour_window(min_hour, max_hour)``), so it always matches the gap table windows exactly.
@@ -21,7 +26,7 @@ import pandas as pd
 import config
 from modules.analytics.common import SOURCE_TYPE, contiguous_runs, hour_window, jdump, n_days_by_day_type
 from modules.analytics.gaps import STATUS_AT_CAPACITY, STATUS_CROWDED, STATUS_NO_CAPACITY
-from modules.analytics.scenarios import service_frequency_scenario
+from modules.analytics.scenarios import pricing_scenario, pricing_sensitivity, service_frequency_scenario
 from modules.data_gen import constants as C
 
 REC_COLUMNS = ["recommendation_id", "priority", "category", "title", "route_id", "location_id", "time_window", "action",
@@ -107,7 +112,7 @@ def _cost_per_km(bus_type: str) -> float:
 
 def generate_recommendations(hourly: pd.DataFrame, summary: pd.DataFrame, scores: pd.DataFrame, routes: pd.DataFrame,
                              trips_sum: pd.DataFrame, stops: pd.DataFrame, competitors: pd.DataFrame,
-                             legs: pd.DataFrame | None = None) -> pd.DataFrame:
+                             legs: pd.DataFrame | None = None, competition: pd.DataFrame | None = None) -> pd.DataFrame:
     recs: list[dict[str, Any]] = []
     rt = routes.set_index("route_id")
     peak = config.PEAK_DAY_TYPE
@@ -128,7 +133,7 @@ def generate_recommendations(hourly: pd.DataFrame, summary: pd.DataFrame, scores
                 rows = g[(g["hour"] >= h0) & (g["hour"] <= h1)]
                 if _window_gap(rows) < config.RECOMMENDATION_MIN_CORRIDOR_WINDOW_GAP:
                     continue
-                r = _corridor_rec(cor, rows, h0, h1, routes, summary, scores, competitors, tlf, peak)
+                r = _corridor_rec(cor, rows, h0, h1, routes, summary, scores, competitors, tlf, peak, competition)
                 if r is not None:
                     recs.append(r)
         # ------------------------------------------------------------ intercity at hard capacity on recurring days
@@ -203,7 +208,7 @@ def _route_fare(summary: pd.DataFrame, rid: str) -> float | None:
     return float(s.iloc[0]["revenue_per_passenger_inr"])
 
 
-def _corridor_rec(cor, rows, h0, h1, routes, summary, scores, competitors, tlf, peak) -> dict[str, Any] | None:
+def _corridor_rec(cor, rows, h0, h1, routes, summary, scores, competitors, tlf, peak, competition=None) -> dict[str, Any] | None:
     state_routes = routes[routes["corridor"] == cor]
     if state_routes.empty:
         return None
@@ -240,6 +245,8 @@ def _corridor_rec(cor, rows, h0, h1, routes, summary, scores, competitors, tlf, 
     alt_fig = {b: {"additional_departures": a["additional_departures"], "projected_load_factor_after": a["projected_load_factor_after"],
                    "incremental_contribution_inr": a["incremental_contribution_inr"]} for b, a in alts.items()}
     window = hour_window(h0, h1)
+    comp_ev, fare_scen, comp_text = _competition_block(competition, cor, peak, h0, h1, bus, fare, scen, inw)
+    scen = {**scen, **({"fare_scenario": fare_scen} if fare_scen else {})}
     pr_hours = sorted(inw["departure_time"].unique())
     ev = {"table": "hourly_demand_supply",
           "filter": {"level": "corridor", "corridor": cor, "day_type": peak, "status": STATUS_NO_CAPACITY, "hours": f"{h0}-{h1}"},
@@ -249,6 +256,8 @@ def _corridor_rec(cor, rows, h0, h1, routes, summary, scores, competitors, tlf, 
                       "private_departure_times": pr_hours, "private_bus_types_by_seats": {k: float(v) for k, v in seat_by_type.items()},
                       "state_bus_type_alternatives_at_headline_share": alt_fig},
           **_route_facts(summary, scores, str(route["route_id"]))}
+    if comp_ev:
+        ev["competition"] = comp_ev
     return {
         "priority": _priority(total_gap), "category": "add_service_corridor_slot",
         "title": f"Add {scen['additional_departures']} {bus.replace('_', ' ')} departure(s) on {cor} {window}",
@@ -257,7 +266,7 @@ def _corridor_rec(cor, rows, h0, h1, routes, summary, scores, competitors, tlf, 
         "action": (f"State timetable has no seats on {cor} in {window}; private operators run {int(rows['private_departures'].sum())} departures "
                    f"there (about {proxy:.0f} passengers/day at the assumed {config.PRIVATE_MARKET_OCCUPANCY_ASSUMPTION:.0%} occupancy). "
                    f"Pilot {scen['additional_departures']} {bus.replace('_', ' ')} departure(s) via {route['route_id']}; assumes the state captures "
-                   f"{config.STATE_CAPTURE_SHARE:.0%} of that market. Illustrative service scenario."),
+                   f"{config.STATE_CAPTURE_SHARE:.0%} of that market. Illustrative service scenario.{comp_text}"),
         "evidence_json": jdump(ev),
         "assumptions_json": jdump({"private_occupancy_assumption": config.PRIVATE_MARKET_OCCUPANCY_ASSUMPTION,
                                    "state_capture_share_assumption": config.STATE_CAPTURE_SHARE, "target_load_factor": tlf,
@@ -271,6 +280,68 @@ def _corridor_rec(cor, rows, h0, h1, routes, summary, scores, competitors, tlf, 
                                                       "capture share of the private market is an assumption"]),
         "_gap": total_gap,
     }
+
+
+def _competition_block(competition, cor, day_type, h0, h1, bus, tariff, scen, inw) -> tuple[dict[str, Any], dict[str, Any], str]:
+    """Competition evidence, the fare scenario and a sentence for the action text (all empty when no competition table)."""
+    if competition is None or competition.empty:
+        return {}, {}, ""
+    c = competition[(competition["route_pair"] == cor) & (competition["day_type"] == day_type)
+                    & competition["hour"].between(h0, h1)]
+    if c.empty:
+        return {}, {}, ""
+    top = c.sort_values(["competitive_gap_score", "hour"], ascending=[False, True], kind="mergesort").iloc[0]
+    same = inw[inw["bus_type"] == bus]
+    ref_src = same if len(same) else inw
+    ref = float(ref_src["base_fare_inr"].median()) if len(ref_src) else float("nan")
+    surge = float(ref_src["surge_fare_inr"].median()) if len(ref_src) else float("nan")
+    comp_cols = ["departure_slot_gap", "seat_share_gap", "premium_gap_component", "fare_disadvantage", "review_theme_deficit"]
+    ev = {"table": "competition_analysis",
+          "filter": {"route_pair": cor, "day_type": day_type, "hours": f"{h0}-{h1}"},
+          "figures": {"mean_competitive_gap_score": float(c["competitive_gap_score"].mean()),
+                      "max_competitive_gap_score": float(top["competitive_gap_score"]), "top_hour": int(top["hour"]),
+                      "private_departures_per_day": float(c["private_departures"].sum()),
+                      "private_seats_per_day": float(c["private_seats"].sum()),
+                      "state_seats_per_day": float(c["state_seats"].sum()),
+                      "premium_bus_gap_services": float(c["premium_bus_gap"].sum()),
+                      "mean_fare_index_normal": None if c["fare_index"].isna().all() else float(c["fare_index"].mean()),
+                      "mean_fare_index_surge": None if c["fare_index_surge"].isna().all() else float(c["fare_index_surge"].mean()),
+                      "component_means_0_1": {k: (None if c[k].isna().all() else float(c[k].mean())) for k in comp_cols},
+                      "weight_version": str(top["weight_version"]), "weights_json": top["weights_json"]},
+          "note": "competitor departures are from Rajkot only; the opposite direction is assumed to mirror them"}
+    fi, fis = ev["figures"]["mean_fare_index_normal"], ev["figures"]["mean_fare_index_surge"]
+    text = (f" Competition evidence: competitive gap score up to {float(top['competitive_gap_score']):.0f}/100 (hour {int(top['hour']):02d}:00), "
+            f"{float(c['premium_bus_gap'].sum()):.0f} private premium/AC-sleeper service(s) with no state equivalent")
+    if fi is not None:
+        text += f", state tariff about {fi:.0%} of the private median fare"
+        if fis is not None:
+            text += f" ({fis:.0%} of the illustrative surge fare)"
+    text += "."
+    fare_scen: dict[str, Any] = {}
+    if ref == ref and ref > 0 and scen["projected_passengers"] > 0 and scen["total_departures_after"] > 0:
+        lo, hi = tariff * config.PRICING_FARE_BOUNDS_FACTOR[0], tariff * config.PRICING_FARE_BOUNDS_FACTOR[1]
+        pos = min(max(config.COMPETITION_FARE_POSITION * ref, lo), hi)
+        seats_total = scen["total_departures_after"] * scen["seats_per_bus"]
+        res = pricing_scenario(scen["projected_passengers"], tariff, pos, config.PRICING_ELASTICITY_DEFAULT, seats_total,
+                               scen["incremental_operating_cost_inr"])
+        sens = pricing_sensitivity(scen["projected_passengers"], tariff, pos, seats_total, scen["incremental_operating_cost_inr"])
+        fare_scen = {"label": "illustrative fare scenario for the new departures (elasticity is an assumption)",
+                     "bus_type": bus, "state_tariff_inr": tariff, "private_median_base_fare_inr": ref,
+                     "private_median_surge_fare_inr": surge, "position_vs_private": config.COMPETITION_FARE_POSITION,
+                     "proposed_fare_inr": pos, "baseline_demand_at_tariff": scen["projected_passengers"],
+                     "elasticity": config.PRICING_ELASTICITY_DEFAULT, "projected_occupancy_at_tariff": res["baseline_occupancy"],
+                     "projected_occupancy_at_proposed_fare": res["occupancy"], "served_demand": res["served_demand"],
+                     "revenue_at_tariff_inr": res["baseline_revenue_inr"], "revenue_at_proposed_fare_inr": res["revenue_inr"],
+                     "operating_cost_inr": res["operating_cost_inr"], "contribution_at_tariff_inr": res["baseline_contribution_inr"],
+                     "contribution_at_proposed_fare_inr": res["contribution_inr"],
+                     "elasticity_sensitivity": sens.to_dict("records"),
+                     "assumptions": ["demand at the state tariff = projected capture of the private-market proxy (see assumptions)",
+                                     "operating cost = incremental vehicle-km x cost per km; contribution is not profit",
+                                     "competitor reaction and cross-route effects are not modelled"]}
+        text += (f" Fare scenario: pricing the new service at {pos:.0f} INR ({config.COMPETITION_FARE_POSITION:.0%} of the private median) "
+                 f"instead of the {tariff:.0f} INR tariff gives projected occupancy {res['occupancy']:.0%} versus {res['baseline_occupancy']:.0%} "
+                 f"at an assumed elasticity of {config.PRICING_ELASTICITY_DEFAULT:g}.")
+    return ev, fare_scen, text
 
 
 def _capacity_rec(rid, direction, rows, h0, h1, rt, summary, scores, tlf) -> dict[str, Any]:

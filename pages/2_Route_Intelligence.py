@@ -1,4 +1,6 @@
 """Route Intelligence: ranked routes with a transparent score, and a drill-down for one route."""
+import json
+
 import pandas as pd
 import streamlit as st
 
@@ -9,6 +11,7 @@ from modules.ui import charts, fmt, narrative as N
 from modules.ui import data as D
 from modules.ui import filters as F
 from modules.ui import layout as L
+from modules.routing import maps as RM
 
 spec, f = L.page_setup("routes")
 t = L.require_tables(spec)
@@ -104,13 +107,108 @@ with tab_c:
     prof = hr.rename(columns={"demand_estimate": "demand", "seats_offered": "seats"})[["hour", "demand", "seats", "status"]]
     L.show_chart(charts.route_hourly_profile(prof), key="ri_hourly")
     L.note("Estimated demand is the critical-link load of ticketed passengers (a lower bound where buses are full). X marks hours inside the service span with no scheduled departure.")
-# M4 extension point: route map and candidate-route inspection attach here (after the tabs), reading route_paths / route_candidates.
+
+# ---- M4: route map, candidate routes, recommendations (all read cached tables; nothing is downloaded or recomputed here)
+ROUTING_CMD = "python -m modules.routing.run"
+rp, cands = D.try_load("route_paths", "processed"), D.try_load("route_candidates", "processed")
+recs, rstops, stops_t = D.try_load("recommendations", "processed"), D.try_load("route_stops", "synthetic"), D.try_load("stops", "synthetic")
+
+st.subheader("Route map")
+prow = rp[rp["route_id"] == route_id] if rp is not None else None
+if prow is None or prow.empty or rstops is None or stops_t is None:
+    L.empty_state("Route paths not built yet", "The road paths are produced from the cached OpenStreetMap graphs. Run the command below, then reload.", ROUTING_CMD)
+else:
+    prow = prow.iloc[0]
+    seq = rstops[rstops["route_id"] == route_id].sort_values("stop_seq").merge(stops_t[["stop_id", "name", "lat", "lon"]], on="stop_id", how="left")
+    seq_disp = seq if direction == "outbound" else seq.iloc[::-1].reset_index(drop=True)
+    seq_disp = seq_disp.assign(seq=range(1, len(seq_disp) + 1))
+    is_osm = prow["path_source"] == "openstreetmap"
+    coords = json.loads(prow["path_geojson"])["coordinates"]
+    st.markdown(f"**Path source: {'real OpenStreetMap roads' if is_osm else 'straight-line fallback (estimate, not road geometry)'}**"
+                + ("" if is_osm else f" - reason: {prow['note']}"))
+    L.show_chart(RM.route_map([{"name": route_id, "coords": coords, "source": prow["path_source"]}], seq_disp), key="ri_map")
+    L.note(RM.ATTRIBUTION + ". Stops are numbered in the " + direction + " direction; the path always follows the outbound stop order.")
+    fig_tbl = pd.DataFrame({"Measure": ["Road path length (km)" if is_osm else "Straight-line estimate x 1.3 (km)", "Route length in the synthetic data (km)",
+                                        "Ratio (path / synthetic)", "Illustrative travel time (min)"],
+                            "Value": [f"{prow['osm_length_km']:.1f}", f"{prow['synthetic_length_km']:.1f}", f"{prow['length_ratio']:.2f}", f"{prow['travel_time_min']:.0f}"]})
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        st.markdown("**Stop sequence (from route_stops)**")
+        st.dataframe(seq_disp[["seq", "stop_id", "name", "cum_km"]].rename(columns={"seq": "#", "stop_id": "Stop ID", "name": "Stop", "cum_km": "Cum. km (outbound frame)"}),
+                     hide_index=True, width="stretch")
+    with c2:
+        st.markdown("**Path versus the synthetic route length**")
+        st.dataframe(fig_tbl, hide_index=True, width="stretch")
+        L.note("Travel time uses OSM-derived speeds scaled by a bus factor plus dwell per stop; it is illustrative, not a timetable.")
+
+st.subheader("Candidate routes (illustrative)")
+if cands is None or cands.empty:
+    L.empty_state("Candidate routes not built yet", "Candidates are generated from the cached road graphs. Run the command below, then reload.", ROUTING_CMD)
+else:
+    groups = list(dict.fromkeys(cands["corridor"]))
+    default_group = next((g for g in groups if (route_type == "intercity") == g.startswith("Rajkot-")), groups[0])
+    group = st.selectbox("Candidate corridor", groups, index=groups.index(default_group), key="ri_cand_group",
+                         help="A bounded, hand-specified set of candidates for two demo corridors. This is not a network-wide optimisation.")
+    cg = cands[cands["corridor"] == group].copy()
+    n_fb = int((cg["rank_flag"] != "ranked").sum())
+    wv = next((json.loads(b).get("weight_version", "") for b in cg["score_breakdown_json"].dropna()), "")
+    st.warning(f"{cg['label'].iloc[0]}. Scores use simulated population and jobs and demonstration weights ({wv}).")
+    if n_fb:
+        st.info(f"{n_fb} candidate(s) have no OpenStreetMap road path (straight-line fallback). They are shown but NOT scored or ranked, because their overlap, penalty and coverage are not comparable.")
+    show = cg.assign(Score=cg["score"], Rank=cg["rank_in_corridor"].astype("Int64"),
+                     Comparable=cg["rank_flag"].map({"ranked": "yes", "not_comparable_fallback": "no (straight-line fallback)"}),
+                     Path=cg["path_source"].map({"openstreetmap": "OpenStreetMap", "straight_line_fallback": "fallback"}))
+    st.dataframe(show[["candidate_id", "name", "Rank", "Score", "travel_time_min", "population_covered", "jobs_covered", "travel_time_penalty_pct",
+                       "existing_route_overlap_pct", "Comparable", "Path"]].sort_values("Rank", na_position="last").rename(columns={
+        "candidate_id": "ID", "name": "Candidate", "travel_time_min": "Travel time (min)", "population_covered": "Population within 800 m",
+        "jobs_covered": "Jobs within 800 m", "travel_time_penalty_pct": "Time penalty vs fastest (%)", "existing_route_overlap_pct": "Overlap with existing routes (%)"}),
+        hide_index=True, width="stretch",
+        column_config={"Score": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.1f"),
+                       "Population within 800 m": st.column_config.NumberColumn(format="%d"), "Jobs within 800 m": st.column_config.NumberColumn(format="%d"),
+                       "Travel time (min)": st.column_config.NumberColumn(format="%.0f"),
+                       "Time penalty vs fastest (%)": st.column_config.NumberColumn(format="%.0f"),
+                       "Overlap with existing routes (%)": st.column_config.NumberColumn(format="%.0f")})
+    pick_c = st.selectbox("Inspect a candidate", cg["candidate_id"].tolist(), key="ri_cand_pick",
+                          format_func=lambda c: f"{c} - {cg.loc[cg['candidate_id'] == c, 'name'].iloc[0]}")
+    crow = cg[cg["candidate_id"] == pick_c].iloc[0]
+    L.show_chart(RM.route_map([{"name": r["candidate_id"], "coords": json.loads(r["path_geojson"])["coordinates"], "source": r["path_source"]}
+                               for _, r in cg.iterrows()], None, selected=pick_c, height=420), key="ri_cand_map")
+    L.note(RM.ATTRIBUTION + ". Candidates are illustrative; orange lines (if any) are straight-line fallbacks.")
+    with st.expander(f"Score breakdown for {pick_c}"):
+        bd = json.loads(crow["score_breakdown_json"])
+        if "components_0_1" in bd:
+            st.dataframe(pd.DataFrame({"Component": list(bd["components_0_1"]), "Value (0-1)": list(bd["components_0_1"].values()),
+                                       "Weight": [bd["weights"][k] for k in bd["components_0_1"]],
+                                       "Weighted contribution": [bd["weighted_contribution"][k] for k in bd["components_0_1"]]}),
+                         hide_index=True, width="stretch")
+            st.caption(f"Score = 100 x sum of weighted contributions = {crow['score']:.1f}. Weights {bd['weight_version']} are demonstration values. {bd['scaling']}.")
+        else:
+            st.write(bd.get("not_comparable", "Not scored."))
+    st.markdown("**Bounds of this analysis.** Candidates cover only the demo corridors above (a handful of hand-specified paths), not the whole GSRTC network. "
+                "Not modelled: fleet size, driver duty and rest rules, depot capacity and turnaround times. Minimum-service routes (L09, L10) stay protected: "
+                "no candidate or score implies withdrawing them.")
+
+st.subheader("Recommendations for this route")
+if recs is None:
+    L.empty_state("Recommendations not generated", "Run the analytics command to create the rule-generated recommendations.", "python -m modules.analytics.run")
+else:
+    rr = recs[recs["route_id"] == route_id].sort_values("priority_rank")
+    if rr.empty:
+        L.note("No rule-generated recommendation applies to this route. Recommendations come from the gap analysis and are not created on this page.")
+    else:
+        st.dataframe(rr[["recommendation_id", "priority", "title", "time_window", "day_type", "confidence_label"]].rename(columns={
+            "recommendation_id": "ID", "priority": "Priority", "title": "Action", "time_window": "Time window", "day_type": "Day type",
+            "confidence_label": "Confidence"}), hide_index=True, width="stretch")
+        L.note("These are the existing recommendation rows; the time window is the demand-supply gap window of the Demand-Supply Gaps page.")
+
 
 L.what_this_means(N.route_meaning(p, int(srow["rank_within_type"]), n_in_type, route_type, float(srow["total_score"])))
 w_lines = [f"{Q.COMPONENT_LABELS[c]}: weight {weights[c] * 100:.0f}%" for c in Q.COMPONENT_COLUMNS]
 L.evidence_expander(
     sources=["route_summary (KPIs: single source of truth)", "route_scores (components, weights, explanation)", "route_kpis (daily trend)",
-             "stop_occupancy (load along the route)", "hourly_demand_supply (hourly profile)"],
+             "stop_occupancy (load along the route)", "hourly_demand_supply (hourly profile)",
+             "route_paths, route_candidates (M4: OpenStreetMap road paths and illustrative candidates; built from cached graphs)",
+             "recommendations (existing rows, unchanged)", "route_stops, stops (stop sequence)"],
     formulas=["Total score = sum of weight x component score (each component min-max normalised to 0-100 within route type).",
               "Weights (" + str(srow["weight_version"]) + "): " + "; ".join(w_lines) + ".",
               "Load factor = passenger-km / seat-km; EPKM = ticket revenue / vehicle-km; contribution = revenue - operating cost.",
@@ -118,5 +216,6 @@ L.evidence_expander(
     assumptions=["Weights are demonstration values, not validated policy.",
                  f"Social importance is rule-based and gives minimum-service routes the maximum; {int(ranked['protected_minimum_service'].sum())} route(s) here are protected.",
                  "Feasibility is a proxy, not an engineering assessment.",
+                 "Road geometry is real OpenStreetMap data (c) OpenStreetMap contributors; routes, stops, demand and candidates are simulated and illustrative. Path travel times use assumed speeds.",
                  config.SIMULATION_BADGE_TEXT + ": routes are demonstration routes with synthetic tickets, not real GSRTC or RMTS routes."],
     filters=f.describe() + ". The ranking and KPIs cover all 42 days; the stop and hourly views use the day type and hours.")

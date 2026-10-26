@@ -37,6 +37,20 @@ Geography: real OSM bus stations/places are fetched only by `fetch_osm` into `da
 
 Reproducibility: all randomness comes from `np.random.default_rng([seed, stage])`; table contents contain no timestamps (wall-clock lives only in `*.provenance.json`), so two runs with the same seed give identical parquet bytes.
 
+## Road network and route intelligence (Milestone 4)
+
+Real OpenStreetMap roads are used for route paths and illustrative candidate routes (optional `geo` extras: osmnx, networkx).
+
+```bash
+python -m modules.routing.fetch_network   # explicit download, once; never run by the dashboard (public Overpass can be slow: retries/backoff built in)
+python -m modules.routing.run             # rebuild data/processed/route_paths.parquet and route_candidates.parquet from the CACHED graphs
+```
+
+- Graph caches live in `data/raw/osm_graph_*.graphml` with provenance sidecars. The Rajkot city graph (about 29 MB) is git-ignored; the corridor and the two small link graphs (Metoda, Shapar) are tracked.
+- Run `python -m modules.routing.run` after `python -m modules.analytics.run`. It never downloads: without osmnx or the caches, paths become labelled `straight_line_fallback` (haversine x 1.3) and fallback candidates are flagged `not_comparable_fallback` (not scored or ranked).
+- Route Intelligence shows each route's road path and stop sequence, and a bounded set of illustrative candidates for two demo corridors (not a network-wide optimisation; fleet, driver, depot and turnaround are not modelled). Candidate score weights are in `config.CANDIDATE_SCORE_WEIGHTS`.
+- Roads and place names are real (c) OpenStreetMap contributors, ODbL; routes, demand and candidates are simulated.
+
 ## Python version
 
 The kit specifies Python 3.11. This repository is developed and tested on **Python 3.12** (the only interpreter available on the development machine). Python 3.11 is expected to work but has not been tested.

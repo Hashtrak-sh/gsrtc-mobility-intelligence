@@ -38,8 +38,6 @@ L.kpi_row([
     {"label": "Trips within one zone", "value": fmt.pct(intra_share, 0), "help": "Share of passengers whose origin and destination zones are the same."},
 ])
 
-if f.corridor not in (F.ALL, F.LOCAL):
-    L.note(F.OD_CORRIDOR_NOTE)
 
 st.subheader("Busiest origin-destination pairs")
 tab_p, tab_m = st.tabs(["Top pairs", "Zone matrix"])
@@ -56,10 +54,11 @@ L.note("Flows grouped by the zone type of their destination and origin: 'towards
 
 L.what_this_means(N.flow_meaning(total, top, names, peak_hour, intra_share, f.day_type))
 L.evidence_expander(
-    sources=["od_flows (zone pair x boarding hour x day type)", "zones (names and zone types)", "route_stops and stops (corridor scope)"],
+    sources=["od_flows (zone pair x route x boarding hour x day type)", "zones (names and zone types)", "route_summary (route to corridor membership)"],
     formulas=["Passengers per day = total passengers of the day type / number of service dates of that day type.",
               "Hour = clock hour of the ticket's boarding timestamp.",
-              "Corridor scope: a pair is included when both zones are served by the scope's routes (for an intercity corridor, not entirely inside local-route zones)."],
+              "Corridor scope: every O-D row carries the route that carried the passengers, so a corridor shows exactly the passengers of its routes "
+              "(a zone pair served by two corridors is split between them, never counted twice)."],
     assumptions=["Flows come from simulated tickets; they exclude people who could not board because buses were full.",
                  "Zone types (residential, employment, ...) are synthetic labels used only to describe commute direction.",
                  "Zones are synthetic demo areas near real Rajkot place names; their coordinates may come from OpenStreetMap but all passenger values are simulated.",

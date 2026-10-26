@@ -1,6 +1,6 @@
 """Explicit network command: download and cache the OSM road graphs used for route paths and candidates.
 
-    python -m modules.routing.fetch_network [--refresh] [--only city|corridor]
+    python -m modules.routing.fetch_network [--refresh] [--only city|corridor|link_metoda|link_shapar]
 
 Writes ``data/raw/osm_graph_city.graphml`` (drive network, Rajkot core) and ``data/raw/osm_graph_corridor.graphml``
 (motorway/trunk/primary + links, Rajkot-Somnath corridor), each with a ``*.provenance.json`` sidecar. This is the ONLY
@@ -24,6 +24,9 @@ ALT_OVERPASS = ["https://overpass.kumi.systems/api", "https://overpass-api.de/ap
 def _download(ox, kind: str):
     if kind == "city":
         return ox.graph_from_bbox(S.CITY_BBOX, network_type="drive", simplify=True, retain_all=False, truncate_by_edge=True)
+    if kind in S.SUPPLEMENT_BBOXES:
+        return ox.graph_from_bbox(S.SUPPLEMENT_BBOXES[kind], network_type="drive", custom_filter=S.SUPPLEMENT_FILTER,
+                                  simplify=True, retain_all=True, truncate_by_edge=True)
     return ox.graph_from_bbox(S.CORRIDOR_BBOX, network_type="drive", custom_filter=S.CORRIDOR_FILTER, simplify=True,
                               retain_all=True, truncate_by_edge=True)
 
@@ -60,8 +63,8 @@ def fetch_one(kind: str, tries: int = 5, out_dir: Path | None = None) -> Path:
         description=f"Real OpenStreetMap road network ({kind}) {S.ATTRIBUTION}. Geography only; no GSRTC route data.",
         assumptions={
             "fetched_at_unix": int(t0), "osmnx": ox.__version__, "network_type": "drive", "simplify": True,
-            "bbox_west_south_east_north": list(S.CITY_BBOX if kind == "city" else S.CORRIDOR_BBOX),
-            "custom_filter": None if kind == "city" else S.CORRIDOR_FILTER,
+            "bbox_west_south_east_north": list(S.CITY_BBOX if kind == "city" else S.SUPPLEMENT_BBOXES.get(kind, S.CORRIDOR_BBOX)),
+            "custom_filter": None if kind == "city" else (S.SUPPLEMENT_FILTER if kind in S.SUPPLEMENT_BBOXES else S.CORRIDOR_FILTER),
             "nodes": G.number_of_nodes(), "edges": G.number_of_edges(), "size_bytes": path.stat().st_size,
             "attribution": "© OpenStreetMap contributors", "license": "ODbL 1.0",
         },
@@ -74,7 +77,7 @@ def fetch_one(kind: str, tries: int = 5, out_dir: Path | None = None) -> Path:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--refresh", action="store_true", help="refetch graphs that already exist")
-    ap.add_argument("--only", choices=S.GRAPH_KINDS)
+    ap.add_argument("--only", choices=S.FETCH_KINDS)
     args = ap.parse_args(argv)
     rc = 0
     try:
@@ -82,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError:
         print("osmnx is not installed. Run: pip install -r requirements-optional.txt", file=sys.stderr)
         return 2
-    for kind in ([args.only] if args.only else S.GRAPH_KINDS):
+    for kind in ([args.only] if args.only else S.FETCH_KINDS):
         if (config.RAW_DIR / S.GRAPH_FILES[kind]).is_file() and not args.refresh:
             print(f"  [{kind}] cached (use --refresh to refetch)")
             continue

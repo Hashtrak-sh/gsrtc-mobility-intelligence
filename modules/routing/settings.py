@@ -18,8 +18,19 @@ CORRIDOR_FILTER: Final[str] = (
     '["highway"~"motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link"]'
 )
 
-GRAPH_KINDS: Final[tuple[str, ...]] = ("city", "corridor")
-GRAPH_FILES: Final[dict[str, str]] = {"city": "osm_graph_city.graphml", "corridor": "osm_graph_corridor.graphml"}
+# Supplementary drive graphs (arterial + collector roads only: motorway..tertiary + unclassified, with links) that extend the
+# city graph to the Metoda GIDC and Shapar-Veraval industrial stops and connect them to Rajkot. ``load_graph("city")``
+# composes them with the city graph (nx.compose) when their cache files exist.
+SUPPLEMENT_FILTER: Final[str] = ('["highway"~"motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|'
+                                 'secondary_link|tertiary|tertiary_link|unclassified"]')
+SUPPLEMENT_BBOXES: Final[dict[str, tuple[float, float, float, float]]] = {
+    "link_metoda": (70.62, 22.19, 70.73, 22.30),
+    "link_shapar": (70.74, 22.10, 70.86, 22.25),
+}
+GRAPH_KINDS: Final[tuple[str, ...]] = ("city", "corridor")          # kinds used for routing (city includes supplements)
+FETCH_KINDS: Final[tuple[str, ...]] = ("city", "corridor", *SUPPLEMENT_BBOXES)
+GRAPH_FILES: Final[dict[str, str]] = {"city": "osm_graph_city.graphml", "corridor": "osm_graph_corridor.graphml",
+                                      **{k: f"osm_graph_{k}.graphml" for k in SUPPLEMENT_BBOXES}}
 
 ATTRIBUTION: Final[str] = "(c) OpenStreetMap contributors, ODbL 1.0"
 
@@ -44,4 +55,4 @@ INTERCITY_LEG_KM: Final[float] = 25.0
 MAX_SNAP_M: Final[float] = 1500.0   # a stop farther than this from the graph is not snapped (uses fallback for the route)
 
 # --- candidates ------------------------------------------------------------------------------------------------
-WALK_BUFFER_M: Final[float] = 800.0
+WALK_BUFFER_M: Final[float] = config.CANDIDATE_WALK_BUFFER_M
