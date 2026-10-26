@@ -9,14 +9,15 @@ Avoid technical jargon on the first screen. Provide expandable “How this was c
 ## Navigation
 
 1. Overview
-2. Demand & Surveys
-3. Route Intelligence
-4. Demand–Supply Gaps
-5. Passenger Flow & O-D
-6. Competition & Pricing
-7. Infrastructure & Digital
-8. CCTV Analytics
-9. Reports
+2. Operations Replay (M8; simulated, not live)
+3. Demand & Surveys
+4. Route Intelligence
+5. Demand–Supply Gaps
+6. Passenger Flow & O-D
+7. Competition & Pricing
+8. Infrastructure & Digital
+9. CCTV Analytics
+10. Reports
 
 “Ask the Data” may appear as a small optional panel on Overview or Reports; it should not be a separate dependency for the demo to work.
 
@@ -39,6 +40,11 @@ Every page:
 - Data provenance panel.
 - One map or corridor visual only if useful.
 
+### Operations Replay (M8)
+- Replays one synthetic service day hour by hour (date picker, clock slider, Play/Pause with speed) to show how a real-time operations view would look once ETM and AVL feeds exist.
+- Four KPIs at the clock: buses in service, boardings so far, departures on time, crowded route-hours; map of stops (sized by last-hour boardings) and estimated bus positions; cumulative boardings line; computed alerts.
+- Prominent "Simulated replay - not live" banner; nothing is streamed. Crowding comes from the average-day table, so it varies with day type and hour, not the date.
+
 ### Demand & Surveys
 - Passenger demand by time/purpose.
 - Private-vehicle use reasons.
@@ -49,6 +55,7 @@ Every page:
 - Ranked route list with a simple score explanation.
 - Select a route to view load factor, EPKM, reliability, ridership trend, and stop sequence.
 - Show actual vs model-predicted values only if a fitted model exists; otherwise use “observed synthetic demand vs baseline estimate”.
+- M8: "Next 7 days (baseline estimate)" in the Demand tab: last 21 observed days, then the seasonal-average baseline with its approx. 80 % band (`baseline_forecast`). Labelled as a baseline, not the ML model (the model's per-day inputs such as the timetable do not exist for future dates).
 
 ### Demand–Supply Gaps
 - Hour × location heatmap.
@@ -58,6 +65,7 @@ Every page:
 ### Passenger Flow & O-D
 - Top O-D pairs, peak-hour profile, O-D matrix.
 - Map arcs only if readable; table/matrix is the fallback.
+- M8: geographic demand heatmap: stop boardings / alightings / net per average day as a density layer plus bubbles on the OpenStreetMap base, Rajkot-city or whole-network view, following the page's day-type and hour filters. Stop positions are real or OSM-offset; passenger values are simulated.
 
 ### Competition & Pricing
 - Departure-slot comparison.
@@ -69,6 +77,7 @@ Every page:
 - Station/depot assessment by dimension.
 - Digital capability maturity.
 - Ranked improvements and evidence notes.
+- M8: digital transformation roadmap: Gantt of initiatives over 36 months in three phases (Foundation 0-6, Scale 6-18, Optimise 18-36), scheduled from the maturity gaps and initiative dependencies. The initiative catalogue, durations, targets and KPIs are authored demo assumptions (`manual_demo_input`), not GSRTC plans.
 
 ### CCTV Analytics
 - Upload/select a permitted clip.

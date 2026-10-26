@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 import config
+from modules.analytics import forecast_view as FV
 from modules.analytics import queries as Q
 from modules.data_gen import constants as C
 from modules.ui import charts, fmt, narrative as N
@@ -147,6 +148,29 @@ with tab_d:
                              hide_index=True, width="stretch", column_config={"MAE increase if shuffled": st.column_config.NumberColumn(format="%.1f")})
                 L.note("Shows what the fitted model relies on, not what causes demand. SHAP is not used.")
 
+    st.markdown("#### Next 7 days (baseline estimate)")
+    fcall = D.try_load("baseline_forecast", "processed")
+    fcr = FV.forecast_rows(fcall, route_id) if fcall is not None else None
+    if fcr is None or fcr.empty:
+        L.empty_state("Baseline estimate not available", "The next-7-days table has no rows for this route. Run the command below, then reload.", ML_CMD)
+    else:
+        hist = FV.history_tail(kpis[kpis["route_id"] == route_id], 21)
+        s = FV.summarize(fcr, hist)
+        st.warning(str(fcr["label"].iloc[0]) + ". Method: " + str(fcr["method"].iloc[0]) + ". " + config.SIMULATION_BADGE_TEXT
+                   + ". This is not the machine-learning model above and not a prediction of real GSRTC ridership.")
+        L.show_chart(charts.forecast_next_days(hist, fcr), key="ri_fc")
+        L.note("Solid line: observed synthetic boardings (last 3 weeks; festival days marked). Dashed line right of the divider: the baseline estimate; "
+               "shaded area: approximate 80 % band (normal assumption on the pooled relative spread of the history).")
+        st.markdown(f"**Estimated boardings, next 7 days:** {fmt.number(s['total'])} &nbsp;|&nbsp; **Peak day:** {s['peak_weekday']} ({fmt.number(s['peak_value'])}) "
+                    f"&nbsp;|&nbsp; **Sum of daily bounds:** {fmt.number(s['lower_total'])} - {fmt.number(s['upper_total'])}")
+        L.note("Totals are sums of the seven daily estimates in the table below; the bounds sum is not a statistical band for the weekly total.")
+        st.dataframe(FV.forecast_table(fcr), hide_index=True, width="stretch",
+                     column_config={"Estimate (passengers)": st.column_config.NumberColumn(format="%d")})
+        st.info(FV.takeaway(route_id, s))
+        st.caption(FV.WHY_NOT_ML)
+        if not FV.dates_follow_history(fcr, hist):
+            st.warning("The estimate dates do not follow the last observed date; re-run the analytics command.")
+
 # ---- M4: route map, candidate routes, recommendations (all read cached tables; nothing is downloaded or recomputed here)
 ROUTING_CMD = "python -m modules.routing.run"
 rp, cands = D.try_load("route_paths", "processed"), D.try_load("route_candidates", "processed")
@@ -248,7 +272,8 @@ L.evidence_expander(
              "stop_occupancy (load along the route)", "hourly_demand_supply (hourly profile)",
              "route_paths, route_candidates (M4: OpenStreetMap road paths and illustrative candidates; built from cached graphs)",
              "recommendations (existing rows, unchanged)", "route_stops, stops (stop sequence)",
-             "predictions, ridership_model_metrics, ridership_feature_importance (M6: optional ridership model, synthetic demonstration)"],
+             "predictions, ridership_model_metrics, ridership_feature_importance (M6: optional ridership model, synthetic demonstration)",
+             "baseline_forecast (next-7-days seasonal-average baseline estimate; route_kpis supplies the observed history)"],
     formulas=["Total score = sum of weight x component score (each component min-max normalised to 0-100 within route type).",
               "Weights (" + str(srow["weight_version"]) + "): " + "; ".join(w_lines) + ".",
               "Load factor = passenger-km / seat-km; EPKM = ticket revenue / vehicle-km; contribution = revenue - operating cost.",

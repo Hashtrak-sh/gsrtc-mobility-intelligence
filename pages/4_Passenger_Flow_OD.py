@@ -2,13 +2,15 @@
 import streamlit as st
 
 from modules.analytics import queries as Q
+from modules.analytics import stop_activity as SA
+from modules.routing import maps as M
 from modules.ui import charts, fmt, narrative as N
 from modules.ui import data as D
 from modules.ui import filters as F
 from modules.ui import layout as L
 
 spec, f = L.page_setup("flow")
-t = L.require_tables(spec)
+t = L.require_tables(spec, extra=[("processed", "stop_occupancy")])
 od, rs, zones = t["od_flows"], t["route_summary"], t["zones"]
 names = D.zone_names()
 ztype = dict(zip(zones["zone_id"], zones["zone_type"]))
@@ -52,15 +54,45 @@ st.subheader("Commute direction by hour")
 L.show_chart(charts.directional_fig(Q.directional_profile(o, ztype)), key="od_dir")
 L.note("Flows grouped by the zone type of their destination and origin: 'towards employment zones' (morning commute pattern) versus 'from employment zones' (return pattern).")
 
+st.subheader("Where demand concentrates: stop-level heatmap")
+act = SA.stop_activity(t["stop_occupancy"], t["stops"], day_type=f.day_type, hour_lo=f.hour_lo, hour_hi=f.hour_hi,
+                       route_ids=None if f.corridor == F.ALL else F.route_ids(rs, f.corridor))
+city_mask = SA.in_city(act)
+hc1, hc2 = st.columns([2, 3])
+metric = hc1.radio("Metric", list(SA.METRICS), format_func=SA.METRICS.get, horizontal=True, key="hm_metric")
+default_city = int(f.corridor in (F.ALL, F.LOCAL)) if city_mask.any() else 0
+view = hc2.radio("Map view", ["Rajkot city", "Whole network"], index=0 if default_city else 1, horizontal=True,
+                 key=f"hm_view_{f.corridor}", help="The intercity corridors are about 200 km from Rajkot, so the city view zooms in "
+                 "to keep the city readable; the network view shows every stop.")
+shown = act[city_mask] if view == "Rajkot city" else act
+col = SA.metric_column(metric)
+missing_xy = int(act[["lat", "lon"]].isna().any(axis=1).sum())
+if shown.dropna(subset=["lat", "lon"]).empty:
+    L.empty_state("No stops to map", f"No stop activity with coordinates matches {f.describe()} in this view. Try the whole network.")
+else:
+    L.show_chart(M.demand_heatmap(shown, col, label=SA.METRICS[metric] + " per day", city=view == "Rajkot city"), key="od_heatmap")
+    st.markdown(f"**{SA.takeaway(shown.dropna(subset=['lat', 'lon']), metric)}**")
+L.note("Basemap and stop positions: (c) OpenStreetMap contributors; stop positions are real OpenStreetMap points or offsets from them "
+       "(coordinate source shown on hover). All passenger values are simulated data for demonstration. Density colour and bubble size "
+       "show the chosen metric per average service day in the selected hours"
+       + (f"; {missing_xy} stop(s) without coordinates are not drawn." if missing_xy else ".")
+       + (" Net bubbles in orange are stops where more passengers alight than board." if metric == "net" else ""))
+
 L.what_this_means(N.flow_meaning(total, top, names, peak_hour, intra_share, f.day_type))
 L.evidence_expander(
-    sources=["od_flows (zone pair x route x boarding hour x day type)", "zones (names and zone types)", "route_summary (route to corridor membership)"],
+    sources=["od_flows (zone pair x route x boarding hour x day type)", "zones (names and zone types)", "route_summary (route to corridor membership)",
+             "stop_occupancy (average bus boardings/alightings per stop, route, direction, day type and departure hour)",
+             "stops (stop names and coordinates; coord_source = openstreetmap, openstreetmap_offset or manual_demo_input)"],
     formulas=["Passengers per day = total passengers of the day type / number of service dates of that day type.",
               "Hour = clock hour of the ticket's boarding timestamp.",
+              "Stop heatmap: boardings per day at a stop = sum over routes, directions and hours in the window of average boardings per trip x trips per day "
+              "(alightings likewise; net = boardings - alightings). Network total equals the route_summary boardings per day of the same routes.",
               "Corridor scope: every O-D row carries the route that carried the passengers, so a corridor shows exactly the passengers of its routes "
               "(a zone pair served by two corridors is split between them, never counted twice)."],
     assumptions=["Flows come from simulated tickets; they exclude people who could not board because buses were full.",
                  "Zone types (residential, employment, ...) are synthetic labels used only to describe commute direction.",
                  "Zones are synthetic demo areas near real Rajkot place names; their coordinates may come from OpenStreetMap but all passenger values are simulated.",
-                 "A map of arcs is not shown because it would not be readable; the matrix and ranked pairs carry the same information."],
+                 "The heatmap shows stop-level activity, not O-D arcs (arcs would not be readable); the matrix and ranked pairs carry the O-D information.",
+                 "Stop positions are real OpenStreetMap points or offsets from them; the hour window uses the trip's departure hour, so a stop's later hours reflect trips that departed in the window.",
+                 "Heatmap density is drawn in screen pixels, so its blur radius changes with zoom; use the bubbles and hover for exact values."],
     filters=f.describe())

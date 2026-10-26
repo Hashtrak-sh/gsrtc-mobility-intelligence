@@ -42,6 +42,12 @@ P0: deterministic historical/hourly baseline or rolling average. P1/P2: scikit-l
 - A festival regressor may be demonstrated, but label the effect as synthetic and illustrative.
 - Never present synthetic test performance as evidence of real-world predictive accuracy.
 
+M8 notes (as built):
+- **Next 7 days view** (`modules/analytics/forecast_view.py`, Route Intelligence → Demand): displays `baseline_forecast` (same-weekday mean of the last 4 weeks, festival days excluded, approx. 80 % band from the pooled relative spread). The ML model is not used for future dates because its per-date inputs (`sched_trips`, `sched_seats`, `is_festival`, `private_services`) exist only for the 42 history dates.
+- **Stop demand heatmap** (`modules/analytics/stop_activity.py`): boardings per average day at a stop = Σ over route, direction and departure hours in the window of `stop_occupancy.avg_boardings × trips_per_day` (alightings likewise; net = boardings − alightings). Summed over stops it equals `route_summary.boardings_per_day_<day_type>` (tested).
+- **Operations replay** (`modules/analytics/replay.py`): buses in service = trips with actual start ≤ clock < start + `scheduled_minutes`; boardings so far = Σ ticket `passenger_count` with timestamp ≤ clock (tickets matched to the date via `trip_id`); on-time uses the shared reliability band (`config.RELIABILITY_ON_TIME_BAND_MIN`); crowded route-hours = `hourly_demand_supply.crowding_flag` on `route_direction` rows of the day type and hour (average day, not per date). Bus positions are interpolated along `route_stops.cum_minutes` (inbound = reverse order) and are estimates.
+- **Digital roadmap** (`modules/analytics/roadmap.py`): current maturity = mean `digital_assessment.maturity_score` per capability; an initiative whose target is at or below the current maturity is dropped; priority = gap + 0.5 × number of transitive dependants; list scheduling from month 0 with at most 3 initiatives in parallel and every dependency finished first; phase follows the start month.
+
 ## 5. Ridership potential model
 
 Start with a simple, explainable baseline (e.g. RandomForest/HistGradientBoosting or a regularised model) and compare against a naïve baseline. Use a train/test split that avoids leakage between near-duplicate records where feasible.

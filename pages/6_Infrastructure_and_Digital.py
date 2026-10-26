@@ -3,8 +3,10 @@ import pandas as pd
 import streamlit as st
 
 from modules.analytics import assets as A
+from modules.analytics import roadmap as RM
 from modules.ui import charts, fmt, narrative as N
 from modules.ui import layout as L
+from modules.ui.roadmap_chart import roadmap_figure
 
 spec, f = L.page_setup("infrastructure", show_filters=())
 t = L.require_tables(spec)
@@ -48,13 +50,39 @@ st.dataframe(pd.DataFrame({
                                                      "Points to target": st.column_config.NumberColumn(format="%.1f")})
 L.note("Lowest scores first. The evidence note is the assessment note recorded with each score.")
 
+st.subheader("Digital transformation roadmap")
+rm = RM.build_roadmap(digital)
+if (rm["status"] == "scheduled").any():
+    L.show_chart(roadmap_figure(rm), key="in_roadmap")
+    st.markdown(RM.takeaway(rm))
+    rows = pd.DataFrame({
+        "Phase": [f"Phase {p}: {n}" if pd.notna(p) else "Not needed (at target)" for p, n in zip(rm["phase"], rm["phase_name"])],
+        "Initiative": rm["id"] + " " + rm["initiative"], "Capability": rm["capability"].str.capitalize(),
+        "Maturity now": rm["current"], "Target": rm["target_maturity"],
+        # Dropped (already at target) initiatives have no schedule: show a dash, never a NaN placeholder
+        "Start month": rm["start_month"].map(lambda m: f"{m:.0f}" if pd.notna(m) else "—"),
+        "End month": rm["end_month"].map(lambda m: f"{m:.0f}" if pd.notna(m) else "—"),
+        "Depends on": rm["dependencies"].map(lambda d: ", ".join(d) if len(d) else "—"), "KPI": rm["kpi"]})
+    st.dataframe(rows, hide_index=True, width="stretch", column_config={
+        "Maturity now": st.column_config.NumberColumn(format="%.1f"), "Target": st.column_config.NumberColumn(format="%.1f")})
+else:
+    L.note("All digital capabilities already meet their illustrative targets, so no initiatives are scheduled.")
+L.note("Simulated data for demonstration. Current maturity is the average of the simulated digital assessment. The initiatives, "
+       "durations, target maturities and KPIs are illustrative assumptions written for this demo, not GSRTC plans. "
+       "An initiative cannot start before the initiatives it depends on finish.")
+
 L.what_this_means(N.infra_meaning(s))
 L.evidence_expander(
-    sources=["assets_assessment (asset x dimension scores, evidence notes)", "digital_assessment (asset x capability maturity, evidence notes)"],
+    sources=["assets_assessment (asset x dimension scores, evidence notes)", "digital_assessment (asset x capability maturity, evidence notes)",
+             "Roadmap initiative catalogue in modules/analytics/roadmap.py (manual_demo_input, authored for the demo)"],
     formulas=["Ranking = scores sorted ascending (lowest first), ties by asset name and item.", "Points to target = 5 - score.",
+              "Roadmap: current maturity = mean digital maturity per capability; gap = initiative target - current; an initiative already at target is dropped.",
+              f"Roadmap scheduling: priority = gap + {RM.FOUNDATION_WEIGHT} x number of dependent initiatives; initiatives start once their dependencies finish, with at most {RM.MAX_PARALLEL} running at once; phase follows the start month (Phase 1 0-6, Phase 2 6-18, Phase 3 18-36 months).",
               f"Attention threshold = score below {A.LOW_SCORE_THRESHOLD} (illustrative)."],
     assumptions=["All scores are synthetic demonstration assessments on a documented 0-5 scale, not field audits.",
                  "Evidence notes are template text recorded with the synthetic scores, not inspection findings.",
                  "The ranking is by score only: it does not weigh passenger volume, cost or feasibility of the improvement.",
+                 "The roadmap is a demonstration plan: the initiative catalogue, durations, target maturities, KPIs and the parallel-working limit are illustrative assumptions (manual demo input), not GSRTC plans, budgets or commitments.",
+                 "The roadmap does not model cost, procurement lead times or staff capacity beyond the parallel-working limit.",
                  "Assessments are not linked to route or corridor filters."],
     filters="No dashboard filters apply to this page.")

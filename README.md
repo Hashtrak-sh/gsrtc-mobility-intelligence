@@ -87,6 +87,15 @@ python -m streamlit run app.py
 
 Without activating the venv, use `.\.venv\Scripts\python.exe -m streamlit run app.py` (PowerShell) or `.venv/Scripts/python.exe -m streamlit run app.py` (Git Bash).
 
+## Presentation features (M8)
+
+All four read the committed tables at page time; none adds a data-preparation step. Method notes: `docs/ANALYTICS_AND_ALGORITHMS.md` (section 4, M8 notes).
+
+- **Operations Replay** (new page, second in the menu): steps a clock through one synthetic service day with Play/Pause. Labelled "Simulated replay - not live"; it shows how a real-time view would look once ETM/AVL feeds exist.
+- **GIS demand heatmap** (Passenger Flow & O-D): stop boardings/alightings as a density layer and bubbles on OpenStreetMap; reconciles with route totals.
+- **Next 7 days** (Route Intelligence → Demand): the seasonal-average baseline estimate with its band, after the ML back-test.
+- **Digital transformation roadmap** (Infrastructure & Digital): three-phase Gantt scheduled from maturity gaps and dependencies; initiatives are authored demo assumptions.
+
 ## Hosting (Streamlit Community Cloud)
 
 The hosted app has no data-preparation step, so the generated tables in `data/synthetic/` and `data/processed/` (about 6 MB) are tracked in git; to refresh the hosted data, regenerate locally and commit. The full annotated CCTV clip is not tracked; a 60 s H.264 excerpt (`data/processed/cctv/annotated_road_traffic_4k_excerpt.mp4`, described by its `.json` sidecar) is, and the CCTV page falls back to it.
@@ -127,9 +136,9 @@ no real API call is made. `.env` is not loaded automatically.
 ## Structure
 
 ```
-app.py                 single entry point: st.navigation + st.Page (nine pages)
+app.py                 single entry point: st.navigation + st.Page (ten pages)
 config.py              seed, bounding box, score weights, thresholds, paths, badge text
-pages/                 page scripts (0_Overview.py ... 8_Reports.py); presentation only
+pages/                 page scripts (0_Overview.py ... 9_Operations_Replay.py); presentation only
 modules/
   ui/                  layout helpers (header, badge, empty states), health panel, page registry
   diagnostics.py       optional-dependency / API-key / data-table checks (no Streamlit)
@@ -139,8 +148,8 @@ modules/
   analytics/ routing/ survey/ competition/ cv/ llm/ reporting/   later milestones
 data/
   raw/                 cached OSM places (osm_places.parquet tracked) and permitted video (git-ignored)
-  synthetic/           generated source tables (git-ignored) + planted_findings.md (tracked)
-  processed/           derived analytics tables (git-ignored)
+  synthetic/           generated source tables + planted_findings.md (tracked for hosting)
+  processed/           derived analytics tables (tracked for hosting; reports, LLM cache and the full CCTV clip stay ignored)
 tests/  docs/  prompts/
 ```
 

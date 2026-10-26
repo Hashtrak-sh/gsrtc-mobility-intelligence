@@ -1,4 +1,4 @@
-"""Single source of truth for the nine navigation pages (docs/UX_AND_DEMO.md order)."""
+"""Single source of truth for the navigation pages (docs/UX_AND_DEMO.md order)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,6 +29,10 @@ PAGES: tuple[PageSpec, ...] = (
              "What is happening on the pilot corridor, where the problem is, and what action is recommended.",
              ((_P, "route_summary"), (_P, "hourly_demand_supply"), (_P, "od_flows"), (_P, "recommendations"),
               (_S, "zones"), (_S, "stops"), (_S, "route_stops")), BOTH_CMD, "M3"),
+    PageSpec("replay", "Operations Replay", "pages/9_Operations_Replay.py", ":material/play_circle:",
+             "A simulated control-room replay of one synthetic service day, showing how a real-time operations view would look once ETM and AVL feeds are connected.",
+             ((_S, "trips"), (_S, "tickets"), (_P, "hourly_demand_supply"), (_S, "stops"), (_S, "route_stops"), (_S, "routes")),
+             BOTH_CMD, "M8"),
     PageSpec("demand", "Demand & Surveys", "pages/1_Demand_and_Surveys.py", ":material/groups:",
              "How passenger demand varies by time and purpose, and what would make private-vehicle users switch to the bus.",
              ((_P, "od_flows"), (_P, "route_summary"), (_S, "survey_responses"), (_S, "zones"), (_S, "stops"), (_S, "route_stops")),

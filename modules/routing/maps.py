@@ -68,3 +68,40 @@ def route_map(paths: Sequence[dict], stops: pd.DataFrame | None = None, *, heigh
                       legend=dict(orientation="h", yanchor="bottom", y=0.01, xanchor="left", x=0.01, bgcolor="rgba(255,255,255,0.85)",
                                   font=dict(size=11)))
     return fig
+
+
+def demand_heatmap(act: pd.DataFrame, metric_col: str, *, label: str, city: bool = True, height: int = 520) -> go.Figure:
+    """Geographic demand heatmap: ``go.Densitymap`` (weighted by ``metric_col``) plus ``go.Scattermap`` bubbles with hover.
+
+    ``act``: columns stop_id, name, lat, lon, coord_source, boardings_per_day, alightings_per_day and ``metric_col``
+    (passengers/day). Stops with missing coordinates are dropped. The density uses the absolute value of ``metric_col``
+    (net can be negative); net bubbles are coloured by sign. ``city=True`` uses a tight density radius and caps the zoom
+    (callers pass the Rajkot city subset); ``city=False`` fits the whole network with a smaller radius.
+    """
+    d = act.dropna(subset=["lat", "lon", metric_col]).copy()
+    fig = go.Figure()
+    if d.empty:
+        fig.update_layout(map=dict(style="open-street-map", center={"lon": 70.8, "lat": 22.3}, zoom=9.0), height=height,
+                          margin=dict(l=0, r=0, t=0, b=0))
+        return fig
+    mag = d[metric_col].abs()
+    top = float(mag.max()) or 1.0
+    fig.add_trace(go.Densitymap(
+        lon=d["lon"], lat=d["lat"], z=mag, radius=38 if city else 26, opacity=0.65, colorscale="YlOrRd", zmin=0,
+        name="Density", showscale=True, hoverinfo="skip",
+        colorbar=dict(title=dict(text=f"{label}<br>(simulated)", font=dict(size=11)), thickness=12, len=0.6)))
+    sizes = ((mag / top).pow(0.5) * (38 if city else 30)).clip(lower=6)
+    colours = d[metric_col].map(lambda v: "#c4551b" if v < 0 else "#1f4e79") if metric_col == "net_per_day" else "#1f4e79"
+    fig.add_trace(go.Scattermap(
+        lon=d["lon"], lat=d["lat"], mode="markers", name="Stops (size = value)", showlegend=False,
+        marker=dict(size=sizes, color=colours, opacity=0.55),
+        customdata=d[["name", "boardings_per_day", "alightings_per_day", "coord_source", "stop_id"]].to_numpy(),
+        hovertemplate=("<b>%{customdata[0]}</b> (%{customdata[4]})<br>Boardings: %{customdata[1]:,.0f} / day (simulated)"
+                       "<br>Alightings: %{customdata[2]:,.0f} / day (simulated)"
+                       "<br>Stop position source: %{customdata[3]}<extra></extra>")))
+    centre, zoom = _fit(list(d["lon"]), list(d["lat"]))
+    if city:
+        zoom = min(zoom, 12.0)
+    fig.update_layout(map=dict(style="open-street-map", center=centre, zoom=zoom), height=height,
+                      margin=dict(l=0, r=0, t=0, b=0), paper_bgcolor="white")
+    return fig

@@ -553,3 +553,35 @@ def cctv_detector_minutes(df: pd.DataFrame) -> go.Figure:
     fig.update_xaxes(title_text="Minute of the clip (clip-relative, not a clock time)", dtick=1)
     fig.update_yaxes(title_text="Line crossings per minute (detector)", rangemode="tozero")
     return style(fig, height=340)
+
+
+def forecast_next_days(hist: pd.DataFrame, fc: pd.DataFrame) -> go.Figure:
+    """Recent observed daily boardings followed by the next-days baseline estimate with its band.
+    ``hist``: service_date, boardings, day_type. ``fc``: service_date, forecast_boardings, lower_bound, upper_bound."""
+    if fc.empty or hist.empty:
+        return empty_figure("No baseline estimate for this route")
+    hx, fx = pd.to_datetime(hist["service_date"]), pd.to_datetime(fc["service_date"])
+    fig = go.Figure()
+    fig.add_scatter(x=fx, y=fc["upper_bound"], mode="lines", line=dict(width=0), hoverinfo="skip", showlegend=False)
+    fig.add_scatter(x=fx, y=fc["lower_bound"], mode="lines", line=dict(width=0), fill="tonexty", fillcolor="rgba(91,135,179,0.22)",
+                    name="Approx. 80 % band", hoverinfo="skip")
+    fig.add_scatter(x=hx, y=hist["boardings"], mode="lines+markers", line=dict(color=ACCENT, width=2), marker=dict(size=5),
+                    name="Observed (synthetic)", hovertemplate="%{x|%a %d %b}: %{y:,.0f} (observed, synthetic)<extra></extra>")
+    fest = hist[hist["day_type"] == "festival"]
+    if len(fest):
+        fig.add_scatter(x=pd.to_datetime(fest["service_date"]), y=fest["boardings"], mode="markers", name="Festival day (observed)",
+                        marker=dict(color=WARN, size=10, symbol="diamond"),
+                        hovertemplate="%{x|%a %d %b}: %{y:,.0f} (festival, observed)<extra></extra>")
+    # join the last observed point to the first estimate so the line reads continuously
+    fig.add_scatter(x=[hx.iloc[-1], fx.iloc[0]], y=[hist["boardings"].iloc[-1], fc["forecast_boardings"].iloc[0]], mode="lines",
+                    line=dict(color=GREY, width=1, dash="dot"), hoverinfo="skip", showlegend=False)
+    fig.add_scatter(x=fx, y=fc["forecast_boardings"], mode="lines+markers", line=dict(color=ACCENT_MID, width=2.5, dash="dash"),
+                    marker=dict(size=7, symbol="circle-open"), name="Baseline estimate",
+                    hovertemplate="%{x|%a %d %b}: %{y:,.0f} (baseline estimate)<extra></extra>")
+    start = hx.max() + pd.Timedelta(hours=12)
+    fig.add_shape(type="line", x0=start, x1=start, y0=0, y1=1, yref="paper", line=dict(color=GREY, width=1.5, dash="dot"))
+    fig.add_annotation(x=start, y=1, yref="paper", text="Forecast starts", showarrow=False, xanchor="left", yanchor="bottom",
+                       font=dict(color=GREY, size=12))
+    fig.update_yaxes(title_text="Passengers per day", rangemode="tozero")
+    fig.update_xaxes(title_text=None, tickformat="%d %b")
+    return style(fig, height=340)
