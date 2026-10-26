@@ -15,7 +15,7 @@ What exists and works today:
 - Optional, explicit, network-using command to cache real OpenStreetMap coordinates.
 - Tests (config, imports, I/O and provenance, diagnostics, page smoke tests, data generation/validation/planted findings).
 
-**Not built yet** (later milestones, see `prompts/`): analytics and KPIs (M2), dashboard content (M3), route intelligence (M4), competition/pricing/survey analysis (M5), CCTV counting and ML (M6), PDF/CSV reports and "Ask the Data" (M7). `python -m modules.analytics.run` is still a stub.
+**Not built yet** (later milestones, see `prompts/`): analytics and KPIs (M2), dashboard content (M3), route intelligence (M4), competition/pricing/survey analysis (M5), CCTV counting and ML (M6), PDF/CSV reports and "Ask the Data" (M7, part A now built; final QA is part B). `python -m modules.analytics.run` is still a stub.
 
 ## Synthetic data commands (Milestone 1)
 
@@ -93,9 +93,27 @@ Without activating the venv, use `.\.venv\Scripts\python.exe -m streamlit run ap
 python -m pytest
 ```
 
-## Optional LLM key
+## Reports, exports and optional "Ask the Data" (M7 part A)
 
-Copy `.env.example` to `.env` and set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`) to enable "Ask the Data" once it is built (M7). The app runs without it. `.env` is git-ignored. The app does not load `.env` automatically yet; set the variable in your shell for now.
+The **Reports** page builds a multi-page PDF for the current sidebar filters (executive summary, route/demand findings, supply gaps and
+recommendations with evidence/assumptions/constraints, competition and pricing, infrastructure and digital, survey findings, model and
+CCTV status, methodology, limitations, scale-up needs). Every page footer reads "Simulated data for demonstration - not GSRTC data".
+CSV downloads (with `#` provenance/limitation headers) and a methodology note are on the same page. Command line:
+
+```powershell
+python -m modules.reporting.pdf --out data/processed/reports/report.pdf --corridor Rajkot-Somnath --day-type weekday --hours 7 22
+```
+
+The PDF uses a TrueType font with the rupee sign when one is installed (Arial on Windows, DejaVu Sans on Linux) and otherwise
+Helvetica with "Rs.". `pypdf` is only needed by the tests that read the PDF text.
+
+**Optional LLM** (`modules/llm/`): `pip install anthropic`, then set `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN`) in your shell or in
+`.streamlit/secrets.toml` (git-ignored); `GSRTC_LLM_MODEL` overrides the default model `claude-opus-5-5`. With a key, Reports shows
+"Ask the Data": the model sees only a compact JSON summary of the processed tables, its answer is checked against that summary (cited
+tables and every figure must appear in it, otherwise it is marked unsupported), and answers are cached in `data/processed/llm_cache/`.
+Demand & Surveys gets a button-triggered "Machine-generated theme summary (optional)". Without a key both stay unavailable, and Reports
+offers six fixed lookups labelled "Rule-based answer, not an LLM". `python -m modules.llm.client` prints the LLM status. Tests use mocks;
+no real API call is made. `.env` is not loaded automatically.
 
 ## Structure
 
@@ -134,17 +152,17 @@ Generated Parquet files under `data/synthetic/` are git-ignored because one comm
 
 ## CCTV proof of concept (M6, optional, CPU)
 
-Counts people/vehicles crossing a line on one permitted pre-recorded clip. Aggregate counts only: no face or identity recognition, no stored track ids. It runs in a separate virtualenv so the core app never imports torch/cv2. Method and honest limits: `docs/CCTV_METHOD.md`.
+Counts vehicles/people crossing a line on one permitted pre-recorded clip. Aggregate counts only: no face or identity recognition, no stored track ids. It runs in a separate virtualenv so the core app never imports torch/cv2. Method, spot check and honest limits: `docs/CCTV_METHOD.md`.
 
 ```powershell
 py -3.12 -m venv .venv-cv        # on a deep path use a short one and `mklink /J .venv-cv C:\gsrtc_cv` (see requirements-cv.txt)
 .venv-cv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 .venv-cv\Scripts\python.exe -m pip install -r requirements-cv.txt
 # the first run downloads the official yolov8n.pt (gitignored) into data/processed/cctv/ unless --model points at a file
-.venv-cv\Scripts\python.exe -m modules.cv.count_video --video data/raw/video/a-morning-on-route-r014.mp4 --config modules/cv/configs/a-morning-on-route-r014.lines.json --stride 3 --annotate
+.venv-cv\Scripts\python.exe -m modules.cv.count_video --video data/raw/video/road_traffic_4k.mp4 --config modules/cv/configs/road_traffic_4k.lines.json --stride 1 --annotate --original-name "4K Road traffic video for object detection and tracking - free download now!.mp4"
 ```
 
-Output: `data/processed/cctv_detector_counts.parquet` + `.provenance.json` and `data/processed/cctv/annotated_<clip>.mp4` (all gitignored). The CCTV Analytics page shows them when present and a clear "Detector output not available" state otherwise. Important: the only permitted clip is a produced explainer animation with no real pedestrians or vehicles, so the detector correctly counts zero and nothing about real-footage accuracy has been validated. `docs/cctv_spot_check_worksheet.md` is for a human count.
+Demo clip: `data/raw/video/road_traffic_4k.mp4` (gitignored), a public sample road-traffic clip; its location is not in the pilot area and it is used only to demonstrate the counting method (the file is actually 1280x720, 30 fps, 306 s). Output: `data/processed/cctv_detector_counts.parquet` + `.provenance.json` and `data/processed/cctv/annotated_<clip>.mp4` (all gitignored). The CCTV Analytics page shows them when present and a clear "Detector output not available" state otherwise. The earlier `a-morning-on-route-r014.mp4` was a produced animation (no real traffic), so it gave zero detections; its line config is kept. `docs/cctv_spot_check_worksheet.md` is for a human count.
 
 ## Boundaries
 

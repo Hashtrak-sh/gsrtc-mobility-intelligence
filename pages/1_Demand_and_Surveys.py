@@ -6,6 +6,7 @@ import streamlit as st
 
 import config
 from modules.analytics import queries as Q
+from modules.llm import ui as llm_ui
 from modules.survey import mode_choice as MC
 from modules.survey import summaries as SV
 from modules.survey import themes as TH
@@ -152,6 +153,9 @@ else:
             "True generator probability": scn["true_generator_probability"].map(lambda p: fmt.pct(p * 100, 0))}), hide_index=True, width="stretch")
         st.markdown(N.survey_model_note(scn, mets, f"a {SV.label(mode).lower()} user travelling for {SV.label(purpose).lower()} ({SV.label(income).lower()})"))
         L.note("Illustrative, conditional on the synthetic training setup. Not a forecast of real behaviour or of GSRTC ridership.")
+
+# M7 (optional): machine-generated theme summary of the open-text answers; button-triggered, cached, hidden behind a note without an LLM key.
+llm_ui.theme_summary_panel(survey["open_text"].dropna().astype(str).tolist() if meta["n"] else [])
 
 prov = D.provenance("survey_responses", "synthetic") or {}
 L.evidence_expander(

@@ -194,11 +194,14 @@ def test_cctv_page_is_honest_about_detector(monkeypatch):
     assert "live" not in md(at).lower().replace("nothing on this page is live", "").replace("nothing on this page is a live camera feed", "")
 
 
-def test_reports_page_provenance_and_no_pdf():
+def test_reports_page_provenance_and_pdf_on_demand():
+    # M7: the PDF is built only on click, so no PDF download is offered until "Generate PDF report" is pressed.
     at = run("pages/8_Reports.py")
     assert not at.exception
-    assert "pdf" not in (md(at) + " ".join(c.value for c in at.caption)).lower()
-    assert len(at.get("download_button")) >= 8  # 7 CSVs + provenance JSON
+    assert [b for b in at.button if b.label == "Generate PDF report"]
+    labels = [d.proto.label for d in at.get("download_button")]
+    assert "Download PDF report" not in labels
+    assert len(labels) >= 8  # CSVs + provenance JSON + methodology note
 
 
 def test_filters_persist_and_apply_via_sidebar():

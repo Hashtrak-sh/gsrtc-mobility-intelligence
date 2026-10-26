@@ -1,0 +1,10 @@
+{
+  "location_id": "sample_road_clip",
+  "description": "Public sample road-traffic clip, location not in the pilot area; used only to demonstrate the counting method. Fixed elevated camera looking down a two-carriageway road; all visible traffic travels toward the camera. Counting line: horizontal at 58% of frame height (y = 418 of 720), from the left edge to 58% of the width, spanning both carriageways and the left footpath.",
+  "line": {"a": [0.0, 0.58], "b": [0.58, 0.58], "coords": "normalized", "positive_is": "inbound",
+           "note": "Directed left to right; moving downward in the image (toward the camera) = inbound, upward (away) = outbound. 'inbound' here only means toward the camera, not toward any stand or city."},
+  "classes": ["person", "car", "two_wheeler", "bus", "truck"],
+  "recording_start": null,
+  "time_basis": "clip_relative",
+  "clip_label": "Public sample road-traffic clip (original title: 4K Road traffic video for object detection and tracking). Actual resolution 1280x720 at 30 fps."
+}

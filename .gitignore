@@ -64,3 +64,7 @@ data/processed/cctv/
 *.pt
 *.mp4
 !modules/cv/configs/*.json
+
+# --- M7 ---
+data/processed/llm_cache/
+data/processed/reports/

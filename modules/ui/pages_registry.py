@@ -54,7 +54,7 @@ PAGES: tuple[PageSpec, ...] = (
              "Aggregate people/vehicle counts from a permitted pre-recorded clip. Optional and isolated from the core app.",
              ((_P, "cctv_hourly_profile"), (_S, "stops")), BOTH_CMD, "M3, M6"),
     PageSpec("reports", "Reports", "pages/8_Reports.py", ":material/description:",
-             "Download supporting CSV tables for the current filters, with provenance and limitations.",
+             "Download a PDF report and supporting CSV tables for the current filters, with provenance and limitations; optional Ask the Data.",
              ((_P, "route_summary"), (_P, "route_scores"), (_P, "recommendations"), (_P, "hourly_demand_supply"), (_P, "od_flows"),
               (_P, "stop_occupancy"), (_P, "cctv_hourly_profile"), (_S, "stops"), (_S, "route_stops")), BOTH_CMD, "M3, M7"),
 )

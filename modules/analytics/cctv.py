@@ -69,8 +69,8 @@ def detector_status(available: dict[str, bool]) -> dict:
 # ---------------------------------------------------------------------------
 DETECTOR_TABLE = "cctv_detector_counts"
 SPOT_CHECK_FILE = "cctv_spot_check.json"
-CV_RUN_COMMAND = (".venv-cv/Scripts/python.exe -m modules.cv.count_video --video data/raw/video/a-morning-on-route-r014.mp4 "
-                  "--config modules/cv/configs/a-morning-on-route-r014.lines.json --stride 3 --annotate")
+CV_RUN_COMMAND = (".venv-cv/Scripts/python.exe -m modules.cv.count_video --video data/raw/video/road_traffic_4k.mp4 "
+                  "--config modules/cv/configs/road_traffic_4k.lines.json --stride 3 --annotate")
 
 
 def cv_env_exists() -> bool:

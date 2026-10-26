@@ -53,7 +53,7 @@ def blur_head_region(frame, box, fraction: float = PRIVACY_BLUR_FRACTION) -> Non
 
 def run(video: Path, cfg_path: Path, model_path: str, stride: int = 1, max_seconds: float | None = None,
         start_seconds: float = 0.0, annotate: bool = False, conf: float = 0.25, iou: float = 0.5, imgsz: int = 640,
-        out_table: Path = OUT_TABLE, out_prov: Path = OUT_PROV) -> dict:
+        out_table: Path = OUT_TABLE, out_prov: Path = OUT_PROV, original_name: str | None = None) -> dict:
     import cv2
     import numpy as np
     import supervision as sv
@@ -159,7 +159,7 @@ def run(video: Path, cfg_path: Path, model_path: str, stride: int = 1, max_secon
         "thresholds": {"conf": conf, "iou": iou, "imgsz": imgsz}, "stride": stride, "device": "cpu",
         "tracker": "supervision ByteTrack (ephemeral ids used only to avoid double counting; never stored)",
         "line_config": cfg, "line_config_file": cfg_path.name,
-        "clip": {"filename": video.name, "sha256": sha256(video), "fps": fps, "width": W, "height": H,
+        "clip": {"filename": video.name, "original_filename": original_name, "sha256": sha256(video), "fps": fps, "width": W, "height": H,
                  "total_frames": total, "duration_s": total / fps},
         "segment": {"start_s": start_seconds, "processed_s": round(seg_seconds, 2), "full_clip": bool(
             start_seconds == 0 and (max_seconds is None or max_seconds * fps >= total))},
@@ -189,6 +189,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--conf", type=float, default=0.25)
     ap.add_argument("--iou", type=float, default=0.5)
     ap.add_argument("--imgsz", type=int, default=640)
+    ap.add_argument("--original-name", default=None, help="original title of the clip, recorded in provenance")
     ap.add_argument("--out", type=Path, default=OUT_TABLE, help="output parquet (provenance written next to it)")
     args = ap.parse_args(argv)
     try:
@@ -196,7 +197,7 @@ def main(argv: list[str] | None = None) -> None:
     except ImportError as e:
         raise SystemExit(f"CCTV detector unavailable: {e}. Install requirements-cv.txt in a separate venv (.venv-cv).")
     run(args.video, args.config, args.model, args.stride, args.max_seconds, args.start_seconds, args.annotate,
-        args.conf, args.iou, args.imgsz, args.out, args.out.with_suffix(".provenance.json"))
+        args.conf, args.iou, args.imgsz, args.out, args.out.with_suffix(".provenance.json"), args.original_name)
 
 
 if __name__ == "__main__":

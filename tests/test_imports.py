@@ -22,9 +22,7 @@ def test_expected_packages_present():
         assert f"modules.{pkg}" in names
 
 
-@pytest.mark.parametrize("name", [
-    "modules.llm.client",
-])
-def test_unbuilt_entry_points_fail_loudly(name):
-    with pytest.raises(NotImplementedError):
-        importlib.import_module(name).main()
+# M7: every entry point is now built (the LLM client prints its status instead of raising NotImplementedError).
+def test_llm_client_entry_point_runs(capsys):
+    importlib.import_module("modules.llm.client").main()
+    assert "LLM available" in capsys.readouterr().out

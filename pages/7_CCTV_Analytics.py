@@ -66,7 +66,8 @@ else:
 
 if not det.empty:
     seg = prov.get("segment", {})
-    st.info("Real detector output on a pre-recorded clip (measurement_method = actual_detector). It is not synthetic and not a live feed.")
+    st.info("Real detector output on a pre-recorded clip (measurement_method = actual_detector). It is not synthetic and not a live feed. "
+            "The clip is a public sample road-traffic video, location not in the pilot area; it is used only to demonstrate the counting method.")
     tot = det.groupby(["direction", "class"])["count"].sum().reset_index()
     inb = int(det[det["direction"] == "inbound"]["count"].sum())
     outb = int(det[det["direction"] == "outbound"]["count"].sum())

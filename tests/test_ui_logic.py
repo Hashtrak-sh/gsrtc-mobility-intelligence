@@ -223,8 +223,10 @@ def test_csv_export_has_provenance_and_matches_filters(analytics, tables):
     ctx = {"route_summary": rs, "route_stops": tables["route_stops"], "stops": tables["stops"]}
     f = F.Filters("Rajkot-Somnath", "weekday", 7, 10)
     prov = {"source_type": "synthetic", "seed": 42, "generated_at": "2026-01-01T00:00:00+00:00"}
-    out = X.build_exports({n: analytics[n] for n in X.EXPORTS}, f, ctx, lambda n: prov)
-    assert set(out) == set(X.EXPORTS)
+    avail = {n: analytics[n] for n in X.EXPORTS if n in analytics}  # M7 model tables (predictions, metrics, paths...) come from separate commands
+    assert {"route_summary", "hourly_demand_supply", "od_flows", "recommendations"} <= set(avail)
+    out = X.build_exports(avail, f, ctx, lambda n: prov)
+    assert set(out) == set(avail)
     df, data = out["hourly_demand_supply"]
     text = data.decode("utf-8")
     head = [ln for ln in text.splitlines() if ln.startswith("#")]

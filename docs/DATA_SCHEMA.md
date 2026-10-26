@@ -327,3 +327,9 @@ Published-table changes relative to the M0 contract (all additive; no column ren
 | `route_stops` | **new table** (`route_id`, `stop_seq`, `stop_id`, `cum_km`, `cum_minutes`) |
 
 Documented semantics tightened (no schema change): `tickets.fare_inr` is the total for the ticket, `cctv_counts.timestamp_min` is a 5-minute bucket start, `survey_responses.switch_intent` is null for non-private-mode respondents, `reviews.themes` is a list of theme/polarity objects.
+
+## M7 additions: report and LLM artefacts (not tables)
+
+- `data/processed/reports/report.pdf`: output of `python -m modules.reporting.pdf` (git-ignored). Built from the existing processed/synthetic tables only; no new table.
+- `data/processed/llm_cache/<sha256>.json`: cached optional LLM answers (`AskResult` / `ThemeResult` JSON; git-ignored). Key = sha256(model, data-summary hash, question). Contains no credential.
+- CSV exports (Reports page) now also cover `competition_analysis`, `predictions`, `ridership_model_metrics`, `route_paths`, `route_candidates` (score may be empty), `survey_model_metrics` and `survey_model_coefficients`. Each file starts with `#` lines: source, seed, generated_at, filters, row count, an optional table note and the limitations.

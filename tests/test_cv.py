@@ -22,6 +22,12 @@ def test_side_of_line():
     assert AG.side_of_line((50, 100), A, B) == 0
 
 
+def test_numpy_scalar_points_work():
+    import numpy as np
+    assert AG.side_of_line((np.float32(50), np.float32(150)), A, B) == 1
+    assert AG.crossing_direction((np.float32(50), np.float32(90)), (np.float32(50), np.float32(110)), A, B) == "inbound"
+
+
 def test_crossing_direction_and_segment_extent():
     assert AG.crossing_direction((50, 90), (50, 110), A, B) == "inbound"
     assert AG.crossing_direction((50, 110), (50, 90), A, B) == "outbound"
@@ -40,6 +46,13 @@ def test_minute_bucket_and_line_counter_counts_each_object_once():
     assert lc.tallies == {(0, "inbound", "person"): 1, (1, "outbound", "car"): 1}
     assert lc.totals() == {("inbound", "person"): 1, ("outbound", "car"): 1}
     assert AG.minute_bucket(59.9) == 0 and AG.minute_bucket(60.0) == 1
+
+
+def test_class_is_majority_vote_over_the_track():
+    lc = AG.LineCounter(A, B)
+    for t, (y, cls) in enumerate([(80, "car"), (85, "car"), (90, "car"), (95, "bus"), (110, "bus")]):  # one stray 'bus' label pair
+        lc.update(t, [(7, (50, y), cls)])
+    assert lc.totals() == {("inbound", "car"): 1}
 
 
 def test_tallies_to_frame_has_explicit_zeros_and_valid_schema():
@@ -71,10 +84,17 @@ def test_modules_import_without_cv_libraries():
     assert r.returncode == 0, r.stderr
 
 
-def test_committed_line_config_is_valid():
-    cfg = json.loads((ROOT / "modules/cv/configs/a-morning-on-route-r014.lines.json").read_text(encoding="utf-8"))
+@pytest.mark.parametrize("name", ["road_traffic_4k", "a-morning-on-route-r014"])
+def test_committed_line_config_is_valid(name):
+    cfg = json.loads((ROOT / f"modules/cv/configs/{name}.lines.json").read_text(encoding="utf-8"))
     assert cfg["line"]["positive_is"] in ("inbound", "outbound") and cfg["recording_start"] is None
     assert set(cfg["classes"]) <= set(AG.COCO_TO_CLASS.values())
+
+
+def test_default_demo_clip_is_road_traffic_and_not_a_pilot_location():
+    cfg = json.loads((ROOT / "modules/cv/configs/road_traffic_4k.lines.json").read_text(encoding="utf-8"))
+    assert cfg["location_id"] == "sample_road_clip" and "not in the pilot area" in cfg["description"]
+    assert "road_traffic_4k" in CC.CV_RUN_COMMAND
 
 
 # ------------------------------------------------------------------ status + page

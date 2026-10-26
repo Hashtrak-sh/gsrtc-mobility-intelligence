@@ -26,7 +26,7 @@ COCO_TO_CLASS = {0: "person", 2: "car", 3: "two_wheeler", 5: "bus", 7: "truck"}
 def side_of_line(p: tuple[float, float], a: tuple[float, float], b: tuple[float, float]) -> int:
     """+1 / -1 for the side of directed line a->b that point p lies on (0 when exactly on it)."""
     v = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
-    return (v > 0) - (v < 0)
+    return int(v > 0) - int(v < 0)  # int(): numpy bools do not support '-'
 
 
 def _within_segment(p0, p1, a, b) -> bool:
@@ -63,6 +63,7 @@ class LineCounter:
     positive_is: str = "inbound"
     _last: dict = field(default_factory=dict, repr=False)
     _counted: set = field(default_factory=set, repr=False)
+    _votes: dict = field(default_factory=dict, repr=False)  # ephemeral per-track class votes (in memory only)
     tallies: dict = field(default_factory=dict)
 
     def update(self, t_seconds: float, tracks) -> int:
@@ -72,6 +73,9 @@ class LineCounter:
         for tid, pt, cls in tracks:
             prev = self._last.get(tid)
             self._last[tid] = pt
+            v = self._votes.setdefault(tid, {})
+            v[cls] = v.get(cls, 0) + 1
+            cls = max(sorted(v), key=v.get)  # majority class seen so far for this track (single-frame labels flip car/bus/truck)
             if prev is None:
                 continue
             d = crossing_direction(prev, pt, self.a, self.b, self.positive_is)
