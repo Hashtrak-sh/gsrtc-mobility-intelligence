@@ -87,6 +87,15 @@ python -m streamlit run app.py
 
 Without activating the venv, use `.\.venv\Scripts\python.exe -m streamlit run app.py` (PowerShell) or `.venv/Scripts/python.exe -m streamlit run app.py` (Git Bash).
 
+## Hosting (Streamlit Community Cloud)
+
+The hosted app has no data-preparation step, so the generated tables in `data/synthetic/` and `data/processed/` (about 6 MB) are tracked in git; to refresh the hosted data, regenerate locally and commit. The full annotated CCTV clip is not tracked; a 60 s H.264 excerpt (`data/processed/cctv/annotated_road_traffic_4k_excerpt.mp4`, described by its `.json` sidecar) is, and the CCTV page falls back to it.
+
+1. Push this folder to a GitHub repo (private is fine).
+2. On share.streamlit.io: Create app, pick the repo and branch, main file `app.py`; under Advanced settings choose Python 3.12.
+3. Optional: to enable "Ask the Data", add `ANTHROPIC_API_KEY = "..."` under the app's Secrets. Without it the page shows its "LLM not configured" message.
+4. Sharing settings control who can view the app (public, or invited emails only).
+
 ## Test
 
 ```powershell
