@@ -23,7 +23,7 @@ def test_expected_packages_present():
 
 
 @pytest.mark.parametrize("name", [
-    "modules.data_gen.generate", "modules.analytics.run",
+    "modules.analytics.run",  # modules.data_gen.generate is implemented in M1
     "modules.cv.count_video", "modules.llm.client",
 ])
 def test_unbuilt_entry_points_fail_loudly(name):

@@ -2,7 +2,9 @@
 # milestone begins:   pip install -r requirements-optional.txt
 # (or copy just one group's lines).
 
-# --- geo (Milestone 4): real OSM geography, cached to data/raw/ ---
+# --- geo (Milestone 1 fetch command; also used in M4): real OSM geography, cached to data/raw/ ---
+# Needed ONLY for `python -m modules.data_gen.fetch_osm`; generation and the app never import it.
+# Verified with osmnx 2.1.1 (pulls geopandas, shapely, pyproj, pyogrio) on Python 3.12 / Windows.
 osmnx>=2.0
 networkx>=3.2
 # h3>=4.0          # optional hex grid (config.H3_RESOLUTION)

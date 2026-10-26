@@ -18,7 +18,7 @@ LAYERS: tuple[str, ...] = ("raw", "synthetic", "processed")
 
 # Table names from docs/DATA_SCHEMA.md.
 SOURCE_TABLES: tuple[str, ...] = (
-    "zones", "stops", "routes", "trips", "tickets", "cctv_counts",
+    "zones", "stops", "routes", "route_stops", "trips", "tickets", "cctv_counts",
     "survey_responses", "competitor_services", "reviews",
     "assets_assessment", "digital_assessment",
 )

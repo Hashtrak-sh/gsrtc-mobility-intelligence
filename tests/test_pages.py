@@ -49,10 +49,16 @@ def test_page_runs_without_exception(spec):
     assert "What this means" in html
 
 
-def test_empty_state_shows_command_when_data_missing():
-    # M0: no data has been generated. (Update this test once M1 generates data.)
+def test_empty_state_shows_command_when_data_missing(monkeypatch, tmp_path):
+    # Point the data layers at an empty directory so the test does not depend on whether data has been generated.
+    from modules.data import io
+
+    empty = {"raw": tmp_path / "raw", "synthetic": tmp_path / "synthetic", "processed": tmp_path / "processed"}
+    monkeypatch.setattr(config, "LAYER_DIRS", empty)
+    assert io.missing_tables("synthetic")
     spec = PAGES[1]
     at = AppTest.from_file(str(ROOT / spec.file), default_timeout=30).run()
+    assert not at.exception
     assert any(spec.command in c.value for c in at.code)
     assert "Data not yet generated" in " ".join(m.value for m in at.markdown)
 

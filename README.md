@@ -4,17 +4,38 @@ A local-first, synthetic-data Streamlit prototype that demonstrates the approved
 
 **Every simulated output carries the label "Simulated data for demonstration".** Synthetic values are never presented as GSRTC facts.
 
-## Current status: Milestone 0 (scaffold) only
+## Current status: Milestone 1 (reproducible synthetic data) on top of the M0 scaffold
 
 What exists and works today:
 
 - Project scaffold, `config.py` (seed 42, pilot bounding box, route-score weights, thresholds, paths).
-- A single Streamlit entry point (`app.py`) with the nine navigation pages. Each page shows its title, purpose, the simulation badge, a "What this means" box, a "Data and assumptions" expander and a clear **"Data not yet generated"** empty state. **No page shows any numbers yet.**
-- A diagnostics panel (Overview, "System health and diagnostics") showing which optional packages are installed, whether `ANTHROPIC_API_KEY` is set (the key is never displayed), the permitted CCTV clips found, and which expected data tables exist.
-- Parquet I/O helpers (`modules/data/io.py`) and a provenance helper (`modules/data/provenance.py`).
-- Tests (config, imports, I/O and provenance, diagnostics, page smoke tests via Streamlit `AppTest`).
+- A single Streamlit entry point (`app.py`) with the nine navigation pages. Pages are still shells: title, purpose, simulation badge, "What this means" box, "Data and assumptions" expander and an empty state when data is missing. **No page shows numbers yet** (M3).
+- Diagnostics panel, Parquet I/O helpers (`modules/data/io.py`), provenance helper (`modules/data/provenance.py`).
+- **Synthetic source tables (M1)**: one offline, deterministic command generates 12 tables (zones, stops, routes, route_stops, trips, tickets, cctv_counts, survey_responses, competitor_services, reviews, assets_assessment, digital_assessment) under `data/synthetic/`, with provenance sidecars, a validation command and planted findings documented in `data/synthetic/planted_findings.md`.
+- Optional, explicit, network-using command to cache real OpenStreetMap coordinates.
+- Tests (config, imports, I/O and provenance, diagnostics, page smoke tests, data generation/validation/planted findings).
 
-**Not built yet** (later milestones, see `prompts/`): synthetic data generation (M1), analytics and KPIs (M2), dashboard content (M3), route intelligence and OSM geography (M4), competition/pricing/survey (M5), CCTV counting and ML (M6), PDF/CSV reports and "Ask the Data" (M7). The commands shown on the empty-state screens (for example `python -m modules.data_gen.generate`) are the planned commands; until their milestone they exist only as stubs that raise `NotImplementedError`.
+**Not built yet** (later milestones, see `prompts/`): analytics and KPIs (M2), dashboard content (M3), route intelligence (M4), competition/pricing/survey analysis (M5), CCTV counting and ML (M6), PDF/CSV reports and "Ask the Data" (M7). `python -m modules.analytics.run` is still a stub.
+
+## Synthetic data commands (Milestone 1)
+
+```powershell
+# 1. (optional, needs internet + `pip install osmnx`) cache real OSM coordinates once; commit-friendly, ~5-10 min, polite rate limits
+python -m modules.data_gen.fetch_osm            # add --refresh to refetch already-cached places
+
+# 2. generate all source tables (offline, ~2-5 s, seed 42); validates at the end and exits non-zero on failure
+python -m modules.data_gen.generate
+#    options: --seed N   --out DIR (data root)   --days N   --no-osm (force manual_demo_input fallback)   --no-validate
+
+# 3. validate existing tables (columns, keys, enums, non-negativity, occupancy, bbox, JSON, planted findings)
+python -m modules.data_gen.validate
+```
+
+What the data is: a **synthetic demonstration** over 42 service days (2026-08-03 to 2026-09-13; 29 weekdays, 11 weekend days, 2 illustrative Janmashtami festival days) for a small Rajkot-area local network (10 demo routes, 28 stops, 14 zones) and intercity corridors Rajkot-Somnath (primary, ~190-205 km, express / AC seater / AC sleeper), Rajkot-Junagadh, Rajkot-Jamnagar and Rajkot-Ahmedabad (~290k tickets, ~17k trips). Routes are demonstration routes, not real GSRTC/RMTS routes; passenger, ticket, survey, review, competitor and CCTV values are all synthetic. The schema, enums, JSON encoding and the M1 migration note are in `docs/DATA_SCHEMA.md`; the planted findings (what, where, mechanism, detection check) are in `data/synthetic/planted_findings.md`.
+
+Geography: real OSM bus stations/places are fetched only by `fetch_osm` into `data/raw/osm_places.parquet` (the small cache file is tracked in git so a fresh clone generates with real coordinates). `generate` never touches the network; if the cache is missing, or a place did not match, it falls back to a documented hand-entered coordinate table. Every zone/stop carries a `coord_source` column: `openstreetmap` (exact cached OSM value), `openstreetmap_offset` (synthetic point placed near an OSM anchor) or `manual_demo_input` (fallback, never labelled OSM). Stops/zones are synthetic demo entities regardless. Map and attribution: (c) OpenStreetMap contributors, ODbL. Jamnagar and Ahmedabad stands lie outside `PILOT_BBOX` by design (documented exceptions).
+
+Reproducibility: all randomness comes from `np.random.default_rng([seed, stage])`; table contents contain no timestamps (wall-clock lives only in `*.provenance.json`), so two runs with the same seed give identical parquet bytes.
 
 ## Python version
 
@@ -42,7 +63,7 @@ pip install -r requirements.txt
 
 Note: `pyarrow` is pinned below 23 because pyarrow 26.x's Parquet DLL was blocked by a Windows Application Control policy on the development machine. Versions 17 to 22 were verified there.
 
-Optional extras (not needed for the current milestone) are listed, grouped by purpose, in `requirements-optional.txt`.
+Optional extras are listed, grouped by purpose, in `requirements-optional.txt`. For `fetch_osm` install the geo group: `pip install osmnx` (verified: osmnx 2.1.1 with geopandas 1.2, shapely 2.2, pyproj 3.8, pyogrio 0.13 on Python 3.12 / Windows; none of their DLLs were blocked). `osmnx` is deliberately not in `requirements.txt`; generation and the app run without it.
 
 ## Run
 
@@ -72,23 +93,25 @@ modules/
   ui/                  layout helpers (header, badge, empty states), health panel, page registry
   diagnostics.py       optional-dependency / API-key / data-table checks (no Streamlit)
   data/                io.py (parquet read/write), provenance.py
-  data_gen/ analytics/ routing/ survey/ competition/ cv/ llm/ reporting/   later milestones
+  data_gen/            M1: generate.py (CLI), validate.py (CLI), fetch_osm.py (network), geography/network/trips/tickets/
+                       cctv/surveys/competition/assets generators, constants.py (fares, costs, crush factor, calendar), checks.py
+  analytics/ routing/ survey/ competition/ cv/ llm/ reporting/   later milestones
 data/
-  raw/                 cached OSM inputs and permitted video (git-ignored contents)
-  synthetic/           generated source tables (git-ignored) + planted_findings.md (tracked, M1)
+  raw/                 cached OSM places (osm_places.parquet tracked) and permitted video (git-ignored)
+  synthetic/           generated source tables (git-ignored) + planted_findings.md (tracked)
   processed/           derived analytics tables (git-ignored)
 tests/  docs/  prompts/
 ```
 
 Navigation: `app.py` calls `st.navigation`, which replaces Streamlit's automatic `pages/` sidebar menu, so there is one menu only. Page file names follow `docs/ARCHITECTURE.md`; the Overview is `pages/0_Overview.py`. The page order and titles live in `modules/ui/pages_registry.py`.
 
-Generated Parquet files are git-ignored because one command regenerates them from `SEED = 42`.
+Generated Parquet files under `data/synthetic/` are git-ignored because one command regenerates them from `SEED = 42`.
 
 ## Pilot and demo story
 
 - **Primary corridor:** Rajkot-Somnath (about 190 km). The configured bounding box covers Rajkot and Somnath/Veraval.
-- **Local pilot:** Rajkot-area local routes and stops.
-- **Data:** synthetic passenger, ticketing, operations, survey and competitor records; real geography may come from OpenStreetMap and must be labelled separately.
+- **Local pilot:** Rajkot-area local demonstration routes and stops.
+- **Data:** synthetic passenger, ticketing, operations, survey, review, competitor and CCTV records; real geography comes from OpenStreetMap (cached) and is labelled separately via `coord_source`.
 - **Demo story:** demand and survey evidence, observed crowding/counts, supply gap, route/service/fare scenario, projected outcomes, evidence-backed report.
 
 ## Boundaries

@@ -49,3 +49,7 @@ data/processed/*
 # Cached OSM downloads and other raw inputs are local only
 data/raw/*
 !data/raw/.gitkeep
+
+# The small OSM place cache IS tracked so a fresh clone generates with real OSM coordinates (osmnx_cache/ stays ignored)
+!data/raw/osm_places.parquet
+!data/raw/osm_places.provenance.json
