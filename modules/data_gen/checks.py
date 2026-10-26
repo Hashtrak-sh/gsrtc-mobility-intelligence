@@ -52,18 +52,20 @@ def stop_zone_map(stops: pd.DataFrame) -> pd.Series:
 
 
 # ----------------------------------------------------------------- finding 1: high load route-hours
-def high_load_route_hours(tables: Tables, min_lf: float = 1.2, day_type: str = "weekday") -> pd.DataFrame:
-    """Route-hours (all weekday trips scheduled to depart in the hour, both directions) with load factor > min_lf.
+def high_load_route_hours(tables: Tables, min_bps: float = 1.2, day_type: str = "weekday") -> pd.DataFrame:
+    """Route-hours (all weekday trips scheduled to depart in the hour, both directions) with boardings per seat > min_bps.
 
-    load_factor = sum(boardings) / sum(seats)  (seat-weighted; standing is allowed on local buses so it can exceed 1).
+    boardings_per_seat = sum(boardings) / sum(seats)  (seat-weighted passenger TURNOVER, not a load factor: passengers who
+    board and alight along the route are counted once each, so it can exceed the 1.6 crush limit on local routes.
+    The physical load measure is the peak load factor computed by ``modules.analytics``).
     """
     t = trip_boardings(tables["trips"], tables["tickets"])
     t = t[t["day_type"] == day_type]
     routes = tables["routes"].set_index("route_id")
     g = t.groupby(["route_id", "dep_hour"]).agg(boardings=("boardings", "sum"), seats=("seats", "sum"), trips=("trip_id", "count")).reset_index()
-    g["load_factor"] = g["boardings"] / g["seats"]
+    g["boardings_per_seat"] = g["boardings"] / g["seats"]
     g["route_type"] = g["route_id"].map(routes["route_type"])
-    return g[g["load_factor"] > min_lf].sort_values("load_factor", ascending=False).reset_index(drop=True)
+    return g[g["boardings_per_seat"] > min_bps].sort_values("boardings_per_seat", ascending=False).reset_index(drop=True)
 
 
 def intercity_weekend_load(tables: Tables, route_id: str = "IC02", departure_time: str = "08:30",
@@ -84,7 +86,7 @@ def capacity_gap_window(tables: Tables, zone_id: str = "Z13", hour: int = 7) -> 
     """Weekday trips departing in ``hour`` that serve ``zone_id``, and how loaded they are.
 
     Returns trips per weekday, seats offered per weekday, mean boardings/seat, mean peak onboard/seat and the same
-    load factor for the other weekday hours of the same routes (for contrast).
+    boardings per seat for the other weekday hours of the same routes (for contrast).
     """
     stops, rs = tables["stops"], tables["route_stops"]
     zone_stops = set(stops.loc[stops["zone_id"] == zone_id, "stop_id"])
@@ -210,7 +212,7 @@ def planted_summary(tables: Tables) -> dict:
     prof = cctv_hourly_profile(tables)
     X, y = survey_design_matrix(tables["survey_responses"])
     return {
-        "high_load_route_hours": hl[["route_id", "dep_hour", "load_factor"]].round(2).to_dict("records"),
+        "high_load_route_hours": hl[["route_id", "dep_hour", "boardings_per_seat"]].round(2).to_dict("records"),
         "intercity_weekend_ac_min_boardings_per_seat": float(wk["boardings_per_seat"].min()),
         "intercity_weekend_ac_min_peak_onboard_per_seat": float(wk["peak_onboard_per_seat"].min()),
         "capacity_gap_z13_hour7": capacity_gap_window(tables),
@@ -261,7 +263,7 @@ def evaluate_planted(tables: Tables) -> list[Check]:
     hl = high_load_route_hours(tables)
     got = set(zip(hl["route_id"], hl["dep_hour"]))
     out.append(Check("F1 high-load local route-hours == planted set (+L07 07h gap consequence)", got == EXPECTED_HIGH_LOAD,
-                     f"detected={sorted(got)} min_lf={hl['load_factor'].min():.2f}"))
+                     f"detected={sorted(got)} min boardings/seat={hl['boardings_per_seat'].min():.2f}"))
     wk = intercity_weekend_load(tables)
     ok = len(wk) >= 10 and wk["boardings_per_seat"].min() >= 0.95 and wk["peak_onboard_per_seat"].min() >= 0.95
     out.append(Check("F1 Rajkot->Somnath 08:30 AC seater ~full every weekend", bool(ok),

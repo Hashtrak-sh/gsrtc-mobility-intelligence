@@ -5,12 +5,17 @@
 competitor observation. The numbers quoted are what the detection checks return on the seed-42 output; the
 generator never writes these numbers anywhere, and the dashboard must recompute them from the source tables.
 
-Detection code: `modules/data_gen/checks.py` (plain pandas, verification helpers only - not the M2 analytics).
-Tests: `tests/test_data_gen.py` (`test_planted_f*`). Report: `python -m modules.data_gen.validate`.
+Detection code: `modules/data_gen/checks.py` (plain pandas, verification helpers only - not the M2 analytics) and, from
+Milestone 2, `modules/analytics/findings.py` (detects the same findings from the analytics outputs; run
+`python -m modules.analytics.run`).
+Tests: `tests/test_data_gen.py` (`test_planted_f*`), `tests/test_analytics_planted.py`. Report: `python -m modules.data_gen.validate`.
 
-Common definitions: *boardings* = `sum(tickets.passenger_count)` per trip; *load factor* = boardings / seats
-(seat-weighted over the trips in the group; local ordinary buses allow standing up to 1.6 x seats onboard, so it can
-exceed 100%); *route-hour* = all weekday trips of a route scheduled to depart in that clock hour (both directions).
+Common definitions: *boardings* = `sum(tickets.passenger_count)` per trip; ***boardings per seat*** = boardings / seats
+(seat-weighted over the trips in the group). This is passenger *turnover*, NOT a load factor: on local routes passengers
+board and alight along the route, so boardings per seat can exceed the 1.6 x seats physical crush limit (seed 42 maximum:
+2.51). The physical measure used by the M2 analytics is the **peak load factor** = maximum onboard on any link / seats
+(at most 1.6 local, 1.0 intercity; see "Peak load factor as detected by the analytics" under F1/F2 below).
+*route-hour* = all weekday trips of a route scheduled to depart in that clock hour (both directions).
 
 ---
 
@@ -20,11 +25,11 @@ exceed 100%); *route-hour* = all weekday trips of a route scheduled to depart in
 
 | | |
 |---|---|
-| **What** | `L05` "Mavdi - Kotharia - Aji GIDC Industrial Shuttle (demo)" is above crush demand in three weekday route-hours: 07:00, 08:00 and 17:00. |
+| **What** | `L05` "Mavdi - Kotharia - Aji GIDC Industrial Shuttle (demo)" is heavily loaded in three weekday route-hours: 07:00, 08:00 and 17:00 (boardings per seat far above the other route-hours; standing loads on the busiest links). |
 | **Where / when** | Route `L05`, weekdays, dep hours 7, 8 (morning shift change, residential south Rajkot to the Aji industrial estate) and 17 (return shift). Both directions. |
 | **Mechanism** | `RouteSpec.hour_boost` in `modules/data_gen/network.py` multiplies expected demand by 2.0 (07h, 08h) and 2.0 (17h) on top of the weekday hour profile and the route's commuter multipliers; demand is Poisson, served up to the 1.6 x seats crush limit, the rest is unmet (not ticketed). No other local route-hour exceeds 120% except `L07` 07h (a direct consequence of F2). |
-| **Expected signal** | load factor > 1.2 (all weekday trips of the route-hour). Seed 42: `L05` 08h = 1.78, 07h = 1.64, 17h = 1.46; `L07` 07h = 2.51. Detected set is exactly {L05 7, L05 8, L05 17, L07 7}. |
-| **Detection check** | `checks.high_load_route_hours(tables)`: join `tickets` to `trips`, sum `passenger_count` by (`route_id`, departure hour) over `day_type == 'weekday'`, divide by `sum(seats)`, keep > 1.2. |
+| **Expected signal** | boardings per seat > 1.2 (all weekday trips of the route-hour). Seed 42: `L05` 08h = 1.78, 07h = 1.64, 17h = 1.46; `L07` 07h = 2.51 boardings per seat. Detected set is exactly {L05 7, L05 8, L05 17, L07 7}. **Peak load factor as detected by the analytics** (max link onboard / seats, `analytics.gaps.route_hour_load`): `L05` 08h = 1.40, 07h = 1.31, 17h = 1.18; `L07` 07h = 1.23 (all <= the 1.6 crush limit); the same four route-hours are the only weekday route-hours above 1.1. At route-direction level the gap table flags `crowded` (gap index > 1.2) for L05 outbound 07h/08h, L05 inbound 08h/17h and L07 outbound 07h. |
+| **Detection check** | `checks.high_load_route_hours(tables)`: join `tickets` to `trips`, sum `passenger_count` by (`route_id`, departure hour) over `day_type == 'weekday'`, divide by `sum(seats)`, keep > 1.2 (boardings per seat). Analytics: `findings.detect_planted` (peak load factor > `config.HIGH_PEAK_LOAD_FACTOR` = 1.1). |
 
 ### F1b. Intercity: Rajkot -> Somnath 08:30 AC seater is ~full every weekend
 
@@ -33,7 +38,7 @@ exceed 100%); *route-hour* = all weekday trips of a route scheduled to depart in
 | **What** | Route `IC02` (Rajkot - Somnath AC Seater), outbound 08:30 departure is full on every weekend day. |
 | **Where / when** | Corridor Rajkot-Somnath, route `IC02`, direction outbound, `departure_time = 08:30`, 11 weekend dates (festival days are higher still). |
 | **Mechanism** | `RouteSpec.trip_boost` x2.8 on weekends (x2.2 on festival days) on top of the AC weekend day factor 1.3; reserved bus, cap = seats; excess demand is unmet and invisible in tickets (it shows up in `cctv_counts` footfall at `S34`/`S01`). |
-| **Expected signal** | boardings per seat >= 0.95 and peak onboard per seat >= 0.95 on every weekend date; the same departure on weekdays has load factor < 0.8. Seed 42: boardings 47-55 for 40 seats, peak onboard = 40 on all 11 dates; weekdays about 0.55-0.65. |
+| **Expected signal** | boardings per seat >= 0.95 and peak onboard per seat (= peak load factor) >= 0.95 on every weekend date; the same departure on weekdays has boardings per seat < 0.8 (peak load factor mean 0.46). Seed 42: boardings 47-55 for 40 seats, peak onboard = 40 on all 11 dates; weekdays about 0.55-0.65. |
 | **Detection check** | `checks.intercity_weekend_load(tables)` (uses `checks.occupancy_by_trip` for the progression board - alight along `route_stops`). |
 
 ---
@@ -45,7 +50,7 @@ exceed 100%); *route-hour* = all weekday trips of a route scheduled to depart in
 | **What** | Weekday 07:00-08:00 demand toward the Shapar-Veraval industrial area (zone `Z13`) is served by exactly one state trip. |
 | **Where / when** | Route `L07` "Madhapar - Raiya - Shapar-Veraval Industrial Area (demo)"; the only route serving `Z13`; weekday schedule has a single departure in hour 7 (07:05, outbound; no inbound departure in that hour). |
 | **Mechanism** | Explicit departure list for `L07` (`dep_out`/`dep_in`) with a x2.6 hour boost on the 07:05 outbound trip; the bus is full to the crush limit and further demand is unmet. |
-| **Expected signal** | 1 trip per weekday in the window, 40 seats; boardings per seat >= 1.5 (seed 42: 2.51); passengers carried to `Z13` in the window >= seats offered (72 vs 40 per weekday); the other weekday hours of the same route are at <= 0.8 boardings per seat (0.46). |
+| **Expected signal** | 1 trip per weekday in the window, 40 seats; boardings per seat >= 1.5 (seed 42: 2.51; peak load factor 1.23 in the analytics); passengers carried to `Z13` in the window >= seats offered (72 vs 40 per weekday); the other weekday hours of the same route are at <= 0.8 boardings per seat (0.46). |
 | **Detection check** | `checks.capacity_gap_window(tables, zone_id='Z13', hour=7)`. |
 
 The second capacity gap is the evening intercity slot (F4).

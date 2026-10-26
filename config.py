@@ -112,6 +112,39 @@ ROUTE_SCORE_WEIGHTS: Final[RouteScoreWeights] = RouteScoreWeights()
 CROWDING_GAP_INDEX_THRESHOLD: Final[float] = 1.2
 
 # --------------------------------------------------------------------------
+# M2 analytics assumptions (all illustrative; recorded in assumptions_json / provenance)
+# --------------------------------------------------------------------------
+# Reliability: a trip is "on time" when -1 <= departure_delay_min <= +5 (inclusive band, minutes).
+RELIABILITY_ON_TIME_BAND_MIN: Final[tuple[float, float]] = (-1.0, 5.0)
+
+# Intercity private-market proxy: assumed average occupancy of private competitor seats (assumption,
+# NOT an observation; competitors have no ticket data in this prototype).
+PRIVATE_MARKET_OCCUPANCY_ASSUMPTION: Final[float] = 0.75
+
+# Intercity buses are "at capacity" when peak load factor >= this (hard seat cap, no standing).
+AT_CAPACITY_LOAD_FACTOR: Final[float] = 0.95
+
+# Service-frequency scenario: target peak-link load factor (share of seats) used for required departures.
+SERVICE_TARGET_LOAD_FACTOR: Final[float] = 0.85
+
+# Pricing scenario (elasticity is a scenario assumption, not a fitted fact).
+PRICING_ELASTICITY_DEFAULT: Final[float] = -0.4
+PRICING_ELASTICITY_SENSITIVITY: Final[tuple[float, ...]] = (-0.2, -0.4, -0.6, -0.8, -1.0)
+PRICING_ELASTICITY_RANGE: Final[tuple[float, float]] = (-3.0, 0.0)
+# Allowed new fare as a multiple of the baseline fare (fare bounds when none are given explicitly).
+PRICING_FARE_BOUNDS_FACTOR: Final[tuple[float, float]] = (0.5, 2.0)
+
+# Recommendations. Day type used for peak analysis; a recommendation is "High" priority when the summed average-day
+# gap_count of its evidence rows reaches RECOMMENDATION_HIGH_GAP; a corridor no-capacity window must carry at least
+# RECOMMENDATION_MIN_CORRIDOR_WINDOW_GAP passengers of proxy market demand per average day to be recommended; the state is
+# assumed to capture STATE_CAPTURE_SHARE of the private-market proxy demand in an uncovered window (assumption).
+PEAK_DAY_TYPE: Final[str] = "weekday"
+RECOMMENDATION_HIGH_GAP: Final[float] = 50.0
+RECOMMENDATION_MIN_CORRIDOR_WINDOW_GAP: Final[float] = 60.0
+STATE_CAPTURE_SHARE: Final[float] = 0.25
+CONFIDENCE_LABEL: Final[str] = "Indicative – synthetic data"
+
+# --------------------------------------------------------------------------
 # Labels
 # --------------------------------------------------------------------------
 SIMULATION_BADGE_TEXT: Final[str] = "Simulated data for demonstration"
@@ -141,3 +174,7 @@ ANTHROPIC_API_KEY_ENV: Final[str] = "ANTHROPIC_API_KEY"
 ANTHROPIC_MODEL_ENV: Final[str] = "ANTHROPIC_MODEL"
 
 ROUTE_SCORE_WEIGHTS.validate()
+
+# Planted-finding detection (analytics side): a route-hour counts as "high load" when its seat-weighted peak load factor
+# (max-link onboard / seats) exceeds this; standing passengers start above 1.0 on local buses.
+HIGH_PEAK_LOAD_FACTOR: Final[float] = 1.1

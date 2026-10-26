@@ -23,8 +23,8 @@ SOURCE_TABLES: tuple[str, ...] = (
     "assets_assessment", "digital_assessment",
 )
 DERIVED_TABLES: tuple[str, ...] = (
-    "route_kpis", "hourly_demand_supply", "od_flows", "route_scores",
-    "route_candidates", "predictions", "recommendations", "competition_analysis",
+    "route_kpis", "route_summary", "hourly_demand_supply", "stop_occupancy", "od_flows", "route_scores",
+    "cctv_hourly_profile", "route_candidates", "predictions", "recommendations", "competition_analysis",
 )
 EXPECTED_TABLES: dict[str, tuple[str, ...]] = {
     "synthetic": SOURCE_TABLES,

@@ -90,3 +90,13 @@ Then compare incremental vehicle-km and operating cost. Account for existing fle
 - Validate on a manually counted sample clip and report the sample, tolerance, and observed error.
 - Blur faces/upper-body regions only if the implementation actually does so. Person-box blurring is not equivalent to reliable face anonymisation; do not overstate it.
 - CV results are a separate evidence stream and must not be silently merged with synthetic ticket data as if they were measured in the same period.
+
+## M2 implementation notes (as built; `modules/analytics/`)
+
+- **Load factors are named, not overloaded.** `peak_load_factor` = max link onboard / seats (trip; seat-weighted for route-hours; <= 1.6 local, <= 1.0 intercity). `load_factor_pct` = passenger-km / seat-km x 100 (route-day / route). `boardings_per_seat` = passenger turnover, a supporting metric only.
+- **Reliability** = % of trips with -1 <= departure delay <= +5 min (`config.RELIABILITY_ON_TIME_BAND_MIN`), ratio of sums; missing delays excluded.
+- **Gap table** is per average day of a day type, uses the critical-link load as demand, and is censored at capacity, so gaps are lower bounds. Intercity corridor-hours add a private-market proxy (competitor seats x assumed occupancy 0.75, `config.PRIVATE_MARKET_OCCUPANCY_ASSUMPTION`) against STATE seats; hours without state seats are `no_scheduled_capacity` (gap_index null).
+- **Route score**: min-max within `route_type`, social importance rule-based, feasibility a proxy, missing components re-weighted; see `modules/analytics/scoring.py`.
+- **Scenarios** (`modules/analytics/scenarios.py`): `service_frequency_scenario`, `pricing_scenario`, `pricing_sensitivity`; pure functions shared by the batch runner and the UI.
+- **Costs**: contribution = ticket revenue - trip operating cost (per-km rate x route km). Not profit. Under the illustrative demo tariff and cost rates every route has negative contribution; this is a property of the synthetic assumptions, not a finding about GSRTC.
+- Run: `python -m modules.analytics.run` (about 2 s). Tests: `tests/test_analytics_*.py`.

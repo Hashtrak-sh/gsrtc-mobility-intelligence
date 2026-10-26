@@ -219,9 +219,9 @@ def test_assets_have_clear_gaps(tables):
 def test_planted_f1_high_load_route_hours(tables):
     hl = K.high_load_route_hours(tables)
     assert set(zip(hl["route_id"], hl["dep_hour"])) == K.EXPECTED_HIGH_LOAD
-    assert (hl["load_factor"] > 1.2).all()
+    assert (hl["boardings_per_seat"] > 1.2).all()
     l05 = hl[hl["route_id"] == "L05"]
-    assert len(l05) == 3 and l05["load_factor"].min() > 1.3
+    assert len(l05) == 3 and l05["boardings_per_seat"].min() > 1.3
     assert tables["routes"].set_index("route_id").loc["L05", "name"].startswith("Mavdi")
 
 
