@@ -228,6 +228,7 @@ class _Builder:
         self.route_findings()
         self.gaps_and_recs()
         self.competition()
+        self.cost_benefit()
         self.infrastructure()
         self.survey()
         self.model_and_cctv()
@@ -520,6 +521,70 @@ class _Builder:
                             [[f"{r['elasticity']:.1f}", fmt.number(r["demand_unconstrained"]), fmt.number(r["served_demand"]), fmt.ratio_pct(r["occupancy"]),
                               fmt.inr(r["revenue_inr"]), fmt.inr(r["revenue_change_inr"]), fmt.inr(r["contribution_inr"])] for _, r in sens.iterrows()],
                             [26 * mm, 20 * mm, 20 * mm, 22 * mm, 28 * mm, 30 * mm, 28 * mm], right=(0, 1, 2, 3, 4, 5, 6)))
+
+    def cost_benefit(self) -> None:
+        """Section 6a: cost per km by class, peak vs normal, recommended fare bands and BCR at DEFAULT illustrative parameters."""
+        from modules.ui import cost_charts as CC
+
+        f = self.f
+        self.add(PageBreak())
+        self.heading("6a. Cost-benefit and fares (illustrative)")
+        corridor = f.corridor if f.corridor in config.INTERCITY_CORRIDORS else config.PRIMARY_CORRIDOR
+        try:
+            from modules.analytics import cost_model as CM
+            from modules.analytics import fare_analysis as FA
+
+            pl = CC.default_report_payload(FA.load_inputs(), self.rs, corridor, f.day_type)
+            out: list = []
+            summ, sel, rec, corr = pl["summary"], pl["sel"], pl["rec"], pl["corr"]
+            if sel.empty:
+                raise ValueError(f"no intercity trips for {corridor} on a {f.day_type}")
+            out.append(self.p(f"{corridor}, {f.day_type}, default parameters (the dashboard page 'Cost-Benefit & Fares' lets every parameter be edited). "
+                              "Illustrative cost model and appraisal: orders of magnitude, not GSRTC data; passenger and revenue inputs are simulated.", self.small))
+            if corridor != f.corridor:
+                out.append(self.p(f"Cost-benefit covers intercity corridors only; {corridor} is shown instead of the selected scope.", self.small))
+            out.append(self.p("Cost per bus-km by class", self.h2))
+            out.append(self.table(["Bus class", "Seats", "Trip operating (INR/km)", "Fixed and overhead (INR/km)", "Full cost (INR/km)"],
+                                  [[CM.CLASS_LABELS[r["bus_class"]], fmt.number(r["seats"]), CC.d_num(r["trip_operating_per_km"], 1),
+                                    CC.d_num(r["fixed_and_overhead_per_km"], 1), CC.d_num(r["full_cost_per_km"], 1)] for _, r in summ.iterrows()],
+                                  [56 * mm, 16 * mm, 34 * mm, 36 * mm, 32 * mm], right=(1, 2, 3, 4)))
+            out.append(self.p(f"Includes the illustrative {corridor} toll at {fmt.number(pl['length_km'], 0)} km. Trip operating cost is the only cost in 'contribution'; "
+                              "fixed and overhead costs (dead km, depreciation or lease, insurance/tax/permits, tolls, depot overhead) are not. "
+                              "Volvo, non-AC sleeper and e-bus are what-if classes that are not in the timetable.", self.small))
+            peak = [int(h) for h in pl["bands"].loc[pl["bands"]["band"] == "peak", "dep_hour"]]
+            out.append(self.p("Peak vs normal hours", self.h2))
+            wins = ", ".join(fmt.hour_window(a, b) for a, b in fmt.contiguous_windows(peak)) if peak else "none"
+            rule = str(pl["bands"]["rule"].iloc[0]) if len(pl["bands"]) else ""
+            out.append(self.p(f"Peak departure hours derived from the data: {wins}. Rule: {rule}.", self.body))
+            out.append(self.table(["Route / class", "Band", "Trips per day", "Load factor", "Contribution per trip (not profit)", "Full-cost margin per trip"],
+                                  [[CC.route_label(r), r["band"], CC.d_num(r["trips_per_day"], 1), CC.d_pct(r["load_factor"]),
+                                    CC.d_inr(r["contribution_per_trip_inr"]), CC.d_inr(r["full_cost_margin_per_trip_inr"])] for _, r in sel.iterrows()],
+                                  [38 * mm, 18 * mm, 24 * mm, 24 * mm, 36 * mm, 34 * mm], right=(2, 3, 4, 5)))
+
+            def band_txt(r) -> str:
+                if CC.ok(r["band_low_inr"]) and CC.ok(r["band_high_inr"]):
+                    return f"{fmt.inr(r['band_low_inr'])} to {fmt.inr(r['band_high_inr'])}"
+                return f"from {fmt.inr(r['band_low_inr'])}" if CC.ok(r["band_low_inr"]) else CC.DASH
+
+            out.append(self.p(f"Recommended fare band (break-even at {pl['target_load_factor']:.0%} load on full cost)", self.h2))
+            out.append(self.table(["Route / class", "Band", "Current fare", "Break-even fare", "Private comparator", "Recommended band", "Status"],
+                                  [[CC.route_label(r), r["band"], CC.d_inr(r["current_fare_inr"]), CC.d_inr(r["break_even_fare_inr"]),
+                                    CC.d_inr(r["private_comparator_inr"]), band_txt(r), r["status"]] for _, r in rec.iterrows()],
+                                  [28 * mm, 14 * mm, 18 * mm, 21 * mm, 22 * mm, 30 * mm, 41 * mm], right=(2, 3, 4)))
+            out.append(self.p("'Not viable on fare alone' means the fare needed to cover full cost at the target load exceeds the competitive cap; the options are cost "
+                              "reduction, a higher load factor, viability-gap support or a social justification.", self.small))
+            out.append(self.p("Illustrative social benefit-cost ratio per corridor", self.h2))
+            out.append(self.table(["Corridor", "Ticket revenue per day", "Full cost per day", "Net social benefit per day", "BCR"],
+                                  [[r["corridor"], CC.d_inr(r["revenue_per_day_inr"]), CC.d_inr(r["full_cost_per_day_inr"]),
+                                    CC.d_inr(r["net_social_benefit_per_day_inr"]), CC.d_x(r["bcr"])] for _, r in corr.iterrows()],
+                                  [44 * mm, 34 * mm, 34 * mm, 38 * mm, 24 * mm], right=(1, 2, 3, 4)))
+            out.append(self.p("BCR = (social benefits + ticket revenue) / full cost, averaged over all 42 simulated service days; above 1.0 the service returns more to society "
+                              "than it costs. Parameters (value of time, diversion shares, carbon price) are illustrative; contribution and margins are not profit; "
+                              "elasticities and private fares are assumptions on simulated data.", self.small))
+        except Exception as exc:  # the report must still build
+            self.para(f"Not available: the cost-benefit analysis could not be computed ({type(exc).__name__}: {exc}). Nothing has been substituted for it.", self.small)
+            return
+        self.add(*out)
 
     def infrastructure(self) -> None:
         self.heading("7. Infrastructure and digital findings")

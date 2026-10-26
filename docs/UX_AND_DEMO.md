@@ -15,9 +15,10 @@ Avoid technical jargon on the first screen. Provide expandable “How this was c
 5. Demand–Supply Gaps
 6. Passenger Flow & O-D
 7. Competition & Pricing
-8. Infrastructure & Digital
-9. CCTV Analytics
-10. Reports
+8. Cost-Benefit & Fares (M9)
+9. Infrastructure & Digital
+10. CCTV Analytics
+11. Reports
 
 “Ask the Data” may appear as a small optional panel on Overview or Reports; it should not be a separate dependency for the demo to work.
 
@@ -72,6 +73,12 @@ Every page:
 - Fare and bus-type comparison.
 - Fare elasticity what-if control with assumptions shown.
 - Revenue and occupancy outcomes side by side.
+
+### Cost-Benefit & Fares (M9)
+- Intercity only. Cost per bus-km for 7 classes (ordinary, express, AC seater, AC sleeper; Volvo multi-axle AC, non-AC sleeper and e-bus as what-if only) split into trip operating costs (energy, tyres, maintenance and other running, crew) and fixed and overhead costs (depreciation or lease, insurance/tax/permits, tolls, dead km, overhead), with editable illustrative assumptions.
+- Peak vs normal hours derived from the data (load factor quantile per corridor and day type) with per-trip and per-seat-km economics.
+- Break-even fare and load factor, private-fare comparison and a recommended fare band per class and band (or an honest "not viable on fare alone" flag); peak/off-peak fare scenario with separate elasticities; new-bus what-if.
+- Illustrative social cost-benefit appraisal (diverted private travel, time, CO2, accidents, congestion) with benefit-cost ratio per corridor and a sensitivity tornado.
 
 ### Infrastructure & Digital
 - Station/depot assessment by dimension.

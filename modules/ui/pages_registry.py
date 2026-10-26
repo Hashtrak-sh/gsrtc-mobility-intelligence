@@ -51,6 +51,11 @@ PAGES: tuple[PageSpec, ...] = (
              "How state services compare with private operators on departure slots, fares and bus types, with a fare what-if.",
              ((_P, "route_summary"), (_P, "route_kpis"), (_P, "competition_analysis"), (_S, "routes"), (_S, "trips"), (_S, "competitor_services"),
               (_S, "reviews")), BOTH_CMD, "M3, M5"),
+    PageSpec("costbenefit", "Cost-Benefit & Fares", "pages/10_Cost_Benefit_and_Fares.py", ":material/payments:",
+             "What a bus-km costs by bus class on intercity corridors, how peak and normal hours differ, the break-even and recommended fares, "
+             "and an illustrative social cost-benefit appraisal.",
+             ((_P, "route_summary"), (_P, "route_kpis"), (_S, "routes"), (_S, "trips"), (_S, "tickets"), (_S, "route_stops"),
+              (_S, "competitor_services")), BOTH_CMD, "M9"),
     PageSpec("infrastructure", "Infrastructure & Digital", "pages/6_Infrastructure_and_Digital.py", ":material/domain:",
              "How stations and depots, and digital systems, score on key dimensions, and which improvements rank highest.",
              ((_S, "assets_assessment"), (_S, "digital_assessment")), GEN_CMD, "M3"),

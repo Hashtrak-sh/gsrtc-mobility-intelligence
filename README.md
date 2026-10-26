@@ -96,6 +96,17 @@ All four read the committed tables at page time; none adds a data-preparation st
 - **Next 7 days** (Route Intelligence → Demand): the seasonal-average baseline estimate with its band, after the ML back-test.
 - **Digital transformation roadmap** (Infrastructure & Digital): three-phase Gantt scheduled from maturity gaps and dependencies; initiatives are authored demo assumptions.
 
+## Cost-Benefit & Fares (M9)
+
+A new intercity page (after Competition & Pricing), with a matching PDF section (6a):
+- cost per bus-km for 7 bus classes (Volvo, non-AC sleeper and e-bus as what-if), split into trip operating and fixed/overhead components;
+- peak vs normal economics with peak hours derived from the data;
+- break-even fare and load factor, private comparison and a recommended fare band;
+- a peak/off-peak fare scenario and a new-bus what-if;
+- an illustrative social cost-benefit appraisal with a benefit-cost ratio per corridor.
+
+All assumptions are editable on the page and labelled illustrative. Method notes: `docs/ANALYTICS_AND_ALGORITHMS.md` (section 7, M9). At default settings the trip cost layer equals the per-km rates used everywhere else, so no other page's figures change.
+
 ## Hosting (Streamlit Community Cloud)
 
 The hosted app has no data-preparation step, so the generated tables in `data/synthetic/` and `data/processed/` (about 6 MB) are tracked in git; to refresh the hosted data, regenerate locally and commit. The full annotated CCTV clip is not tracked; a 60 s H.264 excerpt (`data/processed/cctv/annotated_road_traffic_4k_excerpt.mp4`, described by its `.json` sidecar) is, and the CCTV page falls back to it.
@@ -136,9 +147,9 @@ no real API call is made. `.env` is not loaded automatically.
 ## Structure
 
 ```
-app.py                 single entry point: st.navigation + st.Page (ten pages)
+app.py                 single entry point: st.navigation + st.Page (eleven pages)
 config.py              seed, bounding box, score weights, thresholds, paths, badge text
-pages/                 page scripts (0_Overview.py ... 9_Operations_Replay.py); presentation only
+pages/                 page scripts (0_Overview.py ... 10_Cost_Benefit_and_Fares.py); presentation only
 modules/
   ui/                  layout helpers (header, badge, empty states), health panel, page registry
   diagnostics.py       optional-dependency / API-key / data-table checks (no Streamlit)

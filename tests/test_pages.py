@@ -11,7 +11,7 @@ from modules.ui.pages_registry import PAGES
 ROOT = Path(__file__).resolve().parents[1]
 NAV_ORDER = [
     "Overview", "Operations Replay", "Demand & Surveys", "Route Intelligence", "Demand–Supply Gaps",
-    "Passenger Flow & O-D", "Competition & Pricing", "Infrastructure & Digital",
+    "Passenger Flow & O-D", "Competition & Pricing", "Cost-Benefit & Fares", "Infrastructure & Digital",
     "CCTV Analytics", "Reports",
 ]
 
