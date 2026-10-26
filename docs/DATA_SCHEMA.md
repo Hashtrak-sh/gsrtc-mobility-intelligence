@@ -110,6 +110,8 @@ Every trip in this table is a **state (GSRTC demonstration) service** with ticke
 
 M1 generates **synthetic** counts only (`measurement_method = synthetic`) at `location_id` in {`S01` Rajkot Central Bus Stand, `S31` Junagadh Bus Stand, `S34` Somnath Bus Stand} (these are stop IDs). `timestamp_min` is the START of a **5-minute bucket** (05:00-22:55); classes `person` and `bus`; directions `inbound` / `outbound` (entering / leaving the stand). Real detector output from M6 is a separate stream and must not be merged with this one.
 
+**M6-CCTV `cctv_detector_counts`** (processed layer, separate from `cctv_counts`; written by `python -m modules.cv.count_video`): `location_id`, `timestamp_min`, `clip_minute`, `direction`, `class`, `count`, `measurement_method = actual_detector`, `source_type`, `time_basis = clip_relative`. Minute buckets of **clip time**: `timestamp_min` = 1970-01-01 00:00 + clip offset (a reference, NOT a recording date; `clip_minute` is the integer minute). Zeros are explicit. No track ids or any person-level column. Provenance sidecar `cctv_detector_counts.provenance.json` (model, weights hash, versions, thresholds, stride, line config, clip hash, segment, timings).
+
 ### `survey_responses`
 | Column | Type | Meaning |
 |---|---|---|
@@ -228,6 +230,17 @@ Migration: tables written before M4 (if any) lack the extra columns; rerun `pyth
 
 ### `predictions`
 `entity_type`, `entity_id`, `service_date`, `hour`, `actual_demand`, `predicted_demand`, `lower_bound`, `upper_bound`, `model_name`, `model_version`, `source_type`, `limitations`.
+
+**M6-ML additions to `predictions` (additive).** Written by `python -m modules.ml.ridership` (also by `python -m modules.analytics.run` when scikit-learn is installed; otherwise skipped with a note and no table is written). `source_type = model_output`. One row per route x TEST-window service date (2026-08-31..2026-09-13; 16 x 14 = 224 rows), `hour` null (daily), `entity_type = "route"`, `entity_id` -> `routes.route_id`, `actual_demand` = `route_kpis.boardings`, `predicted_demand` = HistGradientBoostingRegressor (`model_name = hgb_route_day_boardings`, version `ridership-hgb-v1`), `lower_bound`/`upper_bound` = quantile-HGB 10/90 % (nominal 80 %; post-processed so lower <= predicted <= upper, lower >= 0). Extra columns: `split` (always `test`), `day_type`, `route_type`, `baseline_route_daytype_mean`, `baseline_seasonal_naive_lag7`. Target = route-day boardings; features = route attributes, planned supply (trips/seats per day from the timetable), calendar, corridor private-service count; NO same-day ticket outcomes (see `modules/ml/ridership.py`). Train = first 28 dates (2026-08-03..08-30). **Synthetic-data demonstration metrics - not evidence of real-world accuracy.**
+
+### `ridership_model_metrics` (M6-ML; `model_output`)
+Long format: `model`, `model_label`, `model_kind` (`model` | `baseline` | `forecasting_baseline` | `interval` | `diagnostic` | `diagnostic_baseline`), `split` (`train` | `test` | `test_leave_route_out`), `group` (`all`, `local`, `intercity`, `weekday`, `weekend`, `festival`), `metric` (`mae`, `rmse`, `mape_pct` [rows with zero actual skipped], `interval_coverage`, `interval_mean_width`, `interval_nominal_coverage`), `value`, `n`, `source_type`. Models `hgb`, `ridge`; baselines `route_daytype_mean`, `seasonal_naive_lag7` (lagged boardings: forecasting baseline only, NaN where the lag falls before the data). `test_leave_route_out` = secondary diagnostic (each route held out of training).
+
+### `ridership_feature_importance` (M6-ML; `model_output`)
+`rank`, `feature`, `label`, `importance_mae_increase` (permutation importance of the HGB on the test window: increase in MAE, passengers/day, when the feature is shuffled), `importance_std`, `method`, `note`, `model_name`, `model_version`, `source_type`. Not causal. SHAP not used.
+
+### `baseline_forecast` (M6-ML; `model_output`; NOT a model)
+Next 7 days after the data (2026-09-14..09-20) per route: `route_id`, `service_date`, `day_type` (calendar; no festival assumed), `forecast_boardings` (same-weekday mean of the last 4 weeks, festival days excluded), `lower_bound`/`upper_bound` (+/-1.2816 x pooled relative spread `pooled_relative_spread`; approximate 80 %), `history_days_used`, `history_weeks`, `method`, `label`, `source_type`. Written by `python -m modules.analytics.run` (pandas only). Prophet not used (only 6 weeks of synthetic history); H3 not used (zones are the spatial unit).
 
 ### `recommendations`
 Contract columns: `recommendation_id`, `priority`, `category`, `title`, `route_id`, `location_id`, `time_window`, `action`, `evidence_json`, `assumptions_json`, `expected_impact_json`, `constraints_json`, `confidence_label`, `source_type`.

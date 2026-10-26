@@ -79,11 +79,11 @@ L.kpi_row([
 ])
 st.caption(f"{p['name']} | {fmt.km(p['length_km'])} | {p['bus_type'].replace('_', ' ')} | Average boardings per day: {fmt.number(p['avg_boardings_per_day'])} | "
            f"Contribution per day (not profit): {fmt.inr(p['contribution_per_day_inr'])} | Busiest hour: {p['peak_hour_window']}")
-L.note("Observed synthetic demand derived from simulated tickets; no forecasting model is used on this page. All 42 days; day type and hours filters apply to the stop and hourly views.")
+L.note("Observed synthetic demand derived from simulated tickets; the only model on this page is the optional demonstration estimate in the last tab. All 42 days; day type and hours filters apply to the stop and hourly views.")
 
 direction = st.radio("Direction", ["outbound", "inbound"], horizontal=True, key="ri_dir",
                      help="Outbound follows the stop order of the route definition; inbound is the reverse.")
-tab_a, tab_b, tab_c = st.tabs(["Daily ridership", "Load along the route", "Hourly profile"])
+tab_a, tab_b, tab_c, tab_d = st.tabs(["Daily ridership", "Load along the route", "Hourly profile", "Observed vs model estimate"])
 with tab_a:
     L.show_chart(charts.daily_trend(kpis[kpis["route_id"] == route_id]), key="ri_trend")
     L.note("Passengers per service day, coloured by day type (weekday, weekend, festival).")
@@ -107,6 +107,45 @@ with tab_c:
     prof = hr.rename(columns={"demand_estimate": "demand", "seats_offered": "seats"})[["hour", "demand", "seats", "status"]]
     L.show_chart(charts.route_hourly_profile(prof), key="ri_hourly")
     L.note("Estimated demand is the critical-link load of ticketed passengers (a lower bound where buses are full). X marks hours inside the service span with no scheduled departure.")
+
+with tab_d:
+    ML_CMD = "python -m modules.analytics.run"
+    preds, mm, fi = (D.try_load(n, "processed") for n in ("predictions", "ridership_model_metrics", "ridership_feature_importance"))
+    if preds is None or mm is None or fi is None:
+        L.empty_state("Model outputs not available", "The ridership model needs scikit-learn (optional). Install it and run the command below, then reload.", ML_CMD)
+    else:
+        pr = preds[preds["entity_id"] == route_id]
+        if pr.empty:
+            L.empty_state("No model estimates for this route", "The model output has no rows for this route. Re-run the command below.", ML_CMD)
+        else:
+            st.warning(config.RIDERSHIP_LABEL.capitalize() + ". The model is trained on the first 4 weeks and shown on the last 2 weeks of the same synthetic routes.")
+            L.show_chart(charts.ridership_vs_model(pr), key="ri_model")
+            L.note("Points are the observed synthetic boardings; the line is the model estimate with its 10-90 % interval; the dashed line is the simple baseline "
+                   "(route x day-type mean of the training weeks). Festival days (4-5 Sep) never occur in the training weeks, so they are expected to be under-estimated.")
+            m_all = mm[(mm["split"] == "test") & (mm["group"] == "all") & mm["metric"].isin(["mae", "mape_pct"])]
+            rows = []
+            for name in ("hgb", "route_daytype_mean", "seasonal_naive_lag7"):
+                a = m_all[m_all["model"] == name].set_index("metric")["value"]
+                pcol = {"hgb": "predicted_demand", "route_daytype_mean": "baseline_route_daytype_mean", "seasonal_naive_lag7": "baseline_seasonal_naive_lag7"}[name]
+                err = (pr[pcol] - pr["actual_demand"]).abs().dropna()
+                rows.append({"Estimate": {"hgb": "Model (gradient boosting)", "route_daytype_mean": "Baseline: route x day-type mean",
+                                          "seasonal_naive_lag7": "Baseline: same weekday last week"}[name],
+                             "MAE, this route (passengers/day)": float(err.mean()) if len(err) else float("nan"),
+                             "MAE, all routes": float(a["mae"]), "MAPE, all routes (%)": float(a["mape_pct"])})
+            cov = mm[(mm["metric"] == "interval_coverage") & (mm["group"] == "all")]["value"]
+            c1, c2 = st.columns([3, 2])
+            with c1:
+                st.markdown("**Model vs baselines on the test window**")
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
+                             column_config={c: st.column_config.NumberColumn(format="%.1f") for c in list(rows[0])[1:]})
+                if len(cov):
+                    L.note(f"The nominal 80 % interval contained {cov.iloc[0]:.0%} of all test-window observations (festival days are the weakest).")
+            with c2:
+                st.markdown("**Top model inputs (permutation importance)**")
+                top = fi.sort_values("rank").head(5)
+                st.dataframe(top[["label", "importance_mae_increase"]].rename(columns={"label": "Feature", "importance_mae_increase": "MAE increase if shuffled"}),
+                             hide_index=True, width="stretch", column_config={"MAE increase if shuffled": st.column_config.NumberColumn(format="%.1f")})
+                L.note("Shows what the fitted model relies on, not what causes demand. SHAP is not used.")
 
 # ---- M4: route map, candidate routes, recommendations (all read cached tables; nothing is downloaded or recomputed here)
 ROUTING_CMD = "python -m modules.routing.run"
@@ -208,7 +247,8 @@ L.evidence_expander(
     sources=["route_summary (KPIs: single source of truth)", "route_scores (components, weights, explanation)", "route_kpis (daily trend)",
              "stop_occupancy (load along the route)", "hourly_demand_supply (hourly profile)",
              "route_paths, route_candidates (M4: OpenStreetMap road paths and illustrative candidates; built from cached graphs)",
-             "recommendations (existing rows, unchanged)", "route_stops, stops (stop sequence)"],
+             "recommendations (existing rows, unchanged)", "route_stops, stops (stop sequence)",
+             "predictions, ridership_model_metrics, ridership_feature_importance (M6: optional ridership model, synthetic demonstration)"],
     formulas=["Total score = sum of weight x component score (each component min-max normalised to 0-100 within route type).",
               "Weights (" + str(srow["weight_version"]) + "): " + "; ".join(w_lines) + ".",
               "Load factor = passenger-km / seat-km; EPKM = ticket revenue / vehicle-km; contribution = revenue - operating cost.",

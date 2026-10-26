@@ -128,6 +128,24 @@ Generated Parquet files under `data/synthetic/` are git-ignored because one comm
 - **Data:** synthetic passenger, ticketing, operations, survey, review, competitor and CCTV records; real geography comes from OpenStreetMap (cached) and is labelled separately via `coord_source`.
 - **Demo story:** demand and survey evidence, observed crowding/counts, supply gap, route/service/fare scenario, projected outcomes, evidence-backed report.
 
+## Ridership model and baseline forecast (M6, optional ML)
+
+`python -m modules.analytics.run` also writes `baseline_forecast` (next-week same-weekday average with a band; a baseline estimate, not a model) and, when scikit-learn is installed, `predictions`, `ridership_model_metrics` and `ridership_feature_importance` (also runnable alone: `python -m modules.ml.ridership`). Route-day boardings; train 3-30 Aug 2026, test 31 Aug-13 Sep; compared with naive baselines; shown in the Route Intelligence tab "Observed vs model estimate". Synthetic-data demonstration metrics, not evidence of real-world accuracy. Prophet, SHAP and H3 are not used (see `modules/ml/ridership.py`).
+
+## CCTV proof of concept (M6, optional, CPU)
+
+Counts people/vehicles crossing a line on one permitted pre-recorded clip. Aggregate counts only: no face or identity recognition, no stored track ids. It runs in a separate virtualenv so the core app never imports torch/cv2. Method and honest limits: `docs/CCTV_METHOD.md`.
+
+```powershell
+py -3.12 -m venv .venv-cv        # on a deep path use a short one and `mklink /J .venv-cv C:\gsrtc_cv` (see requirements-cv.txt)
+.venv-cv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+.venv-cv\Scripts\python.exe -m pip install -r requirements-cv.txt
+# the first run downloads the official yolov8n.pt (gitignored) into data/processed/cctv/ unless --model points at a file
+.venv-cv\Scripts\python.exe -m modules.cv.count_video --video data/raw/video/a-morning-on-route-r014.mp4 --config modules/cv/configs/a-morning-on-route-r014.lines.json --stride 3 --annotate
+```
+
+Output: `data/processed/cctv_detector_counts.parquet` + `.provenance.json` and `data/processed/cctv/annotated_<clip>.mp4` (all gitignored). The CCTV Analytics page shows them when present and a clear "Detector output not available" state otherwise. Important: the only permitted clip is a produced explainer animation with no real pedestrians or vehicles, so the detector correctly counts zero and nothing about real-footage accuracy has been validated. `docs/cctv_spot_check_worksheet.md` is for a human count.
+
 ## Boundaries
 
 This is a demonstration. It does not prove model accuracy, operational feasibility or actual GSRTC demand. CCTV counting (when built) is aggregate-only, with no face or identity recognition, on a clip the developer is permitted to process. See `RULES.md`.

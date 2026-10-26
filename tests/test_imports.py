@@ -23,7 +23,7 @@ def test_expected_packages_present():
 
 
 @pytest.mark.parametrize("name", [
-    "modules.cv.count_video", "modules.llm.client",
+    "modules.llm.client",
 ])
 def test_unbuilt_entry_points_fail_loudly(name):
     with pytest.raises(NotImplementedError):

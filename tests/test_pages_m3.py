@@ -180,14 +180,18 @@ def test_competition_defaults_to_primary_corridor_for_local_scope():
     assert not at.exception and any(config.PRIMARY_CORRIDOR in i.value for i in at.info)
 
 
-def test_cctv_page_is_honest_about_detector():
+def test_cctv_page_is_honest_about_detector(monkeypatch):
+    # M6-CCTV: force the "no detector output" state regardless of whether a local run has produced output
+    from modules.data import io as _io
+    _exists = _io.table_exists
+    monkeypatch.setattr(_io, "table_exists", lambda n, l, b=None: False if n == "cctv_detector_counts" else _exists(n, l, b))
     at = run("pages/7_CCTV_Analytics.py")
     assert not at.exception
     assert any("SYNTHETIC" in w.value for w in at.warning)
     assert any("Detector unavailable" in e.value or "no real counts" in e.value for e in [*at.error, *at.info])
     schema = next(d.value for d in at.dataframe if "Column" in d.value.columns)
     assert "count" in set(schema["Column"])
-    assert "live" not in md(at).lower().replace("nothing on this page is live", "")
+    assert "live" not in md(at).lower().replace("nothing on this page is live", "").replace("nothing on this page is a live camera feed", "")
 
 
 def test_reports_page_provenance_and_no_pdf():

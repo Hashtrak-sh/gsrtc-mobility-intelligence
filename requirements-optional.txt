@@ -16,9 +16,10 @@ scikit-learn>=1.4
 # prophet>=1.1     # only if enough synthetic history exists
 
 # --- cv (Milestone 6): CCTV aggregate counting, CPU ---
+# Use a SEPARATE venv (.venv-cv) for these; see requirements-cv.txt (supervision must be <0.27 for ByteTrack).
 opencv-python>=4.9
 ultralytics>=8.2
-supervision>=0.21
+supervision>=0.21,<0.27
 
 # --- llm (Milestone 7): "Ask the Data" ---
 anthropic>=0.40

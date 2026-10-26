@@ -4,9 +4,13 @@ Works on the SYNTHETIC ``cctv_counts`` stream only (``measurement_method = synth
 """
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 
+import config
 from modules.analytics.common import SOURCE_TYPE
+from modules.data import io
 
 COLUMNS = ["location_id", "day_type", "hour", "mean_inbound_persons", "n_days", "measurement_method", "source_type"]
 
@@ -58,3 +62,39 @@ def detector_status(available: dict[str, bool]) -> dict:
                 "message": "Detector unavailable: required package(s) not installed: " + ", ".join(missing) + "."}
     return {"state": "no_output", "missing": [],
             "message": "Detector packages are installed, but no detector output has been produced, so no real counts are shown."}
+
+
+# ---------------------------------------------------------------------------
+# M6-CCTV: real detector output on the permitted pre-recorded clip (separate stream, never merged with synthetic cctv_counts)
+# ---------------------------------------------------------------------------
+DETECTOR_TABLE = "cctv_detector_counts"
+SPOT_CHECK_FILE = "cctv_spot_check.json"
+CV_RUN_COMMAND = (".venv-cv/Scripts/python.exe -m modules.cv.count_video --video data/raw/video/a-morning-on-route-r014.mp4 "
+                  "--config modules/cv/configs/a-morning-on-route-r014.lines.json --stride 3 --annotate")
+
+
+def cv_env_exists() -> bool:
+    """Whether a separate CV virtualenv (``.venv-cv``) exists. Checked by path only; nothing is imported."""
+    return any((config.ROOT_DIR / ".venv-cv" / sub).exists() for sub in ("Scripts/python.exe", "bin/python"))
+
+
+def detector_output_status() -> dict:
+    """``available`` if the detector output table AND its provenance sidecar exist, else ``no_output``. Never imports heavy libs."""
+    table_ok = io.table_exists(DETECTOR_TABLE, "processed")
+    prov_path = io.provenance_path(DETECTOR_TABLE, "processed")
+    prov = None
+    if prov_path.is_file():
+        try:
+            prov = json.loads(prov_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            prov = None
+    state = "available" if table_ok and prov is not None else "no_output"
+    spot = None
+    sp = io.layer_dir("processed") / SPOT_CHECK_FILE
+    if sp.is_file():
+        try:
+            spot = json.loads(sp.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            spot = None
+    return {"state": state, "provenance": prov, "spot_check": spot, "cv_env_exists": cv_env_exists(),
+            "command": CV_RUN_COMMAND}

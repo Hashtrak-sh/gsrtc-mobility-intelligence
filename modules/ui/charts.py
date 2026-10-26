@@ -176,6 +176,28 @@ def daily_trend(df: pd.DataFrame) -> go.Figure:
     return style(fig, height=340)
 
 
+def ridership_vs_model(df: pd.DataFrame) -> go.Figure:
+    """Actual vs model estimate for one route over the test window (M6-ML). ``df``: service_date, actual_demand,
+    predicted_demand, lower_bound, upper_bound, baseline_route_daytype_mean."""
+    if df.empty:
+        return empty_figure("No model estimates for this route")
+    d = df.sort_values("service_date")
+    x = pd.to_datetime(d["service_date"])
+    fig = go.Figure()
+    fig.add_scatter(x=x, y=d["upper_bound"], mode="lines", line=dict(width=0), hoverinfo="skip", showlegend=False)
+    fig.add_scatter(x=x, y=d["lower_bound"], mode="lines", line=dict(width=0), fill="tonexty", fillcolor="rgba(91,135,179,0.22)",
+                    name="Model interval (nominal 80 %)", hoverinfo="skip")
+    fig.add_scatter(x=x, y=d["baseline_route_daytype_mean"], mode="lines", line=dict(color=GREY, width=1.5, dash="dash"), name="Baseline: route x day-type mean",
+                    hovertemplate="%{x|%a %d %b}: %{y:,.0f} (baseline)<extra></extra>")
+    fig.add_scatter(x=x, y=d["predicted_demand"], mode="lines", line=dict(color=ACCENT_MID, width=2.5), name="Model estimate",
+                    hovertemplate="%{x|%a %d %b}: %{y:,.0f} (model estimate)<extra></extra>")
+    fig.add_scatter(x=x, y=d["actual_demand"], mode="markers", marker=dict(color=ACCENT, size=8), name="Observed (synthetic)",
+                    hovertemplate="%{x|%a %d %b}: %{y:,.0f} (observed, synthetic)<extra></extra>")
+    fig.update_yaxes(title_text="Passengers per day", rangemode="tozero")
+    fig.update_xaxes(title_text=None, tickformat="%d %b")
+    return style(fig, height=340)
+
+
 def occupancy_chart(prog: pd.DataFrame, stop_names: dict[str, str], crush_factor: float | None) -> go.Figure:
     """Mean onboard load by stop along the route, with seat capacity (and crush load for local buses)."""
     if prog.empty:
@@ -515,3 +537,19 @@ def coefficient_chart(coef: pd.DataFrame) -> go.Figure:
     fig.update_xaxes(title_text="Coefficient (log-odds of switching)", zeroline=True)
     fig.update_yaxes(title_text=None, automargin=True)
     return style(fig, height=max(380, 36 * len(c) + 120))
+
+
+# --- M6-CCTV: detector output on a pre-recorded clip (clip-relative minutes, aggregate counts only) ---
+def cctv_detector_minutes(df: pd.DataFrame) -> go.Figure:
+    """Counts per clip minute, grouped bars by class and direction. ``df``: clip_minute, direction, class, count."""
+    if df.empty:
+        return empty_figure("No detector rows")
+    fig = go.Figure()
+    for i, ((cls, d), g) in enumerate(df.groupby(["class", "direction"])):
+        g = g.sort_values("clip_minute")
+        fig.add_bar(x=g["clip_minute"], y=g["count"], name=f"{cls} {d}", marker_color=SERIES[i % len(SERIES)],
+                    hovertemplate=f"{cls} {d}, clip minute %{{x}}: %{{y}} crossings<extra></extra>")
+    fig.update_layout(barmode="group")
+    fig.update_xaxes(title_text="Minute of the clip (clip-relative, not a clock time)", dtick=1)
+    fig.update_yaxes(title_text="Line crossings per minute (detector)", rangemode="tozero")
+    return style(fig, height=340)

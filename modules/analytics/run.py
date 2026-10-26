@@ -20,6 +20,8 @@ from modules.competition import gap_score as CG
 from modules.data import io
 from modules.data.provenance import make_provenance
 from modules.survey import mode_choice
+from modules.analytics import forecast as FC  # M6-ML
+from modules.ml import ridership as ridership_ml  # M6-ML
 
 OUTPUT_TABLES = ("route_kpis", "route_summary", "hourly_demand_supply", "stop_occupancy", "od_flows", "route_scores",
                  "recommendations", "cctv_hourly_profile", "competition_analysis")
@@ -107,6 +109,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Survey switch-intent model written ({mode_choice.TABLE_COEF}, {mode_choice.TABLE_METRICS}); test ROC-AUC "
               f"{m.loc['roc_auc', 'model']:.3f} (baseline 0.5), Brier {m.loc['brier_score', 'model']:.3f} "
               f"(baseline {m.loc['brier_score', 'baseline']:.3f}). {mode_choice.ILLUSTRATIVE_LABEL}.")
+    # M6-ML: deterministic baseline forecast (pandas only) and the optional ridership model (needs scikit-learn)
+    fc = FC.baseline_forecast(res["route_kpis"])
+    io.write_table(fc, FC.TABLE, "processed", base_dir=args.base_dir, provenance=make_provenance(
+        "model_output", assumptions={"method": "same-weekday mean of the last 4 weeks, festival days excluded", "band": "+/-1.2816 x pooled relative spread",
+                                     "prophet": "not used: only 6 weeks of synthetic history"},
+        description="Baseline estimate of next-week route-day boardings (seasonal average; not a model)"))
+    print(f"Baseline next-week forecast written ({FC.TABLE}, {len(fc)} rows; baseline estimate, not a model).")
+    rid = ridership_ml.run_and_write(res["route_kpis"], tables, args.base_dir)
+    if rid is None:
+        print("Ridership model: skipped (see note above; optional, needs scikit-learn).")
+    else:
+        print("Ridership model written (predictions, ridership_model_metrics, ridership_feature_importance); " + "; ".join(ridership_ml.summary_lines(rid)) + ".")
     print("Planted findings (detected from analytics outputs):")
     for f in FD.detect_planted(res, tables):
         print(f"  [{'PASS' if f.ok else 'FAIL'}] {f.name}: {f.detail}")

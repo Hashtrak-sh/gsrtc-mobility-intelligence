@@ -1,0 +1,9 @@
+{
+  "location_id": "CLIP-R014",
+  "description": "Horizontal counting line across the vertical middle of the 1920x1080 frame. The clip is a produced explainer animation (map, KPI cards, a mock 'CAM 02' panel), not footage from a fixed camera, so this line is a placeholder that exercises the pipeline; it is not a calibrated gate line.",
+  "line": {"a": [0.0, 0.5], "b": [1.0, 0.5], "coords": "normalized", "positive_is": "inbound",
+           "note": "Directed a->b (left to right); the positive side is below the line (image y grows downward), so moving downward = inbound, upward = outbound."},
+  "classes": ["person", "car", "two_wheeler", "bus", "truck"],
+  "recording_start": null,
+  "time_basis": "clip_relative"
+}

@@ -1,0 +1,13 @@
+# CCTV proof of concept (Milestone 6), CPU only. Install into a SEPARATE venv, never the core app venv:
+#   py -3.12 -m venv .venv-cv
+#   .venv-cv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   .venv-cv\Scripts\python.exe -m pip install -r requirements-cv.txt
+# Windows note: a deep project path can hit WinError 206 while installing torch; create the venv at a short path
+# (e.g. C:\gsrtc_cv) and link it:  mklink /J .venv-cv C:\gsrtc_cv
+# Verified: torch 2.14.1+cpu, ultralytics 8.4.189, supervision 0.26.1, opencv-python 5.0.0, pyarrow 26.0.0.
+# supervision must be < 0.27: later releases removed sv.ByteTrack (moved to the separate `trackers` package).
+ultralytics>=8.2
+supervision>=0.21,<0.27
+opencv-python>=4.9
+pandas
+pyarrow

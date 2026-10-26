@@ -57,3 +57,10 @@ data/raw/*
 !data/raw/osm_graph_corridor.provenance.json
 !data/raw/osm_graph_link_*.graphml
 !data/raw/osm_graph_link_*.provenance.json
+
+# --- M6-CCTV ---
+.venv-cv/
+data/processed/cctv/
+*.pt
+*.mp4
+!modules/cv/configs/*.json

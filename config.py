@@ -265,3 +265,17 @@ SURVEY_MODEL_LABEL: Final[str] = ("illustrative, conditional on the synthetic tr
 # ==========================================================================
 # M5 - end
 # ==========================================================================
+
+# ==========================================================================
+# M6-ML (ridership baseline model + baseline forecast) - begin
+# ==========================================================================
+RIDERSHIP_TRAIN_DAYS: Final[int] = 28            # first 4 weeks train, the remaining service dates (2 weeks) are the test window
+RIDERSHIP_MODEL_VERSION: Final[str] = "ridership-hgb-v1"
+RIDERSHIP_INTERVAL_QUANTILES: Final[tuple[float, float]] = (0.1, 0.9)   # nominal 80 % interval
+RIDERSHIP_PERMUTATION_REPEATS: Final[int] = 20
+RIDERSHIP_LABEL: Final[str] = "Synthetic-data demonstration metrics - not evidence of real-world accuracy"
+FORECAST_HORIZON_DAYS: Final[int] = 7
+FORECAST_HISTORY_WEEKS: Final[int] = 4
+# ==========================================================================
+# M6-ML - end
+# ==========================================================================
