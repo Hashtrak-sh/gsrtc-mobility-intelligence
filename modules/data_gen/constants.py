@@ -82,8 +82,12 @@ def onboard_cap(route_type: str, seats: int) -> int:
 # --------------------------------------------------------------------------
 # Operating cost (INR per vehicle-km, illustrative; cost = rate x route length_km)
 # --------------------------------------------------------------------------
+# M2.5 calibration rationale (illustrative orders of magnitude for Indian state-transport operations, NOT GSRTC data):
+# city bus about INR 50-55 per bus-km, intercity express about INR 45-50, AC seater about INR 55, AC sleeper about INR 60.
+# Fares per km (below) and loads are tuned so that strong intercity corridors run near break-even on ticket revenue
+# alone while city routes lose money, as is typical of subsidised urban bus services.
 OPERATING_COST_PER_KM_INR: Final[dict[str, float]] = {
-    "ordinary": 52.0, "express": 58.0, "AC_seater": 70.0, "AC_sleeper": 80.0,
+    "ordinary": 52.0, "express": 46.0, "AC_seater": 54.0, "AC_sleeper": 60.0,
 }
 
 # --------------------------------------------------------------------------
@@ -91,11 +95,13 @@ OPERATING_COST_PER_KM_INR: Final[dict[str, float]] = {
 # fare per passenger = max(min_fare, base + per_km * km), rounded to a multiple of `round_to`
 # ticket fare_inr = per-passenger fare x concession factor x passenger_count
 # --------------------------------------------------------------------------
+# M2.5 calibration: per-km fares are in the usual Indian intercity range (express about INR 1.2/km, AC seater about 1.9/km,
+# AC sleeper about 2.5/km, city bus about 1.25/km plus a boarding component); Rajkot-Somnath AC sleeper comes to about INR 490.
 FARE_TABLE: Final[dict[str, dict[str, float]]] = {
-    "ordinary":   {"base": 3.0,  "per_km": 1.00, "min_fare": 5.0,  "round_to": 1.0},
-    "express":    {"base": 5.0,  "per_km": 1.25, "min_fare": 10.0, "round_to": 5.0},
+    "ordinary":   {"base": 3.0,  "per_km": 1.25, "min_fare": 5.0,  "round_to": 1.0},
+    "express":    {"base": 5.0,  "per_km": 1.20, "min_fare": 10.0, "round_to": 5.0},
     "AC_seater":  {"base": 10.0, "per_km": 1.90, "min_fare": 30.0, "round_to": 5.0},
-    "AC_sleeper": {"base": 20.0, "per_km": 2.40, "min_fare": 50.0, "round_to": 5.0},
+    "AC_sleeper": {"base": 20.0, "per_km": 2.50, "min_fare": 50.0, "round_to": 5.0},
 }
 CONCESSION_FACTOR: Final[dict[str, float]] = {"adult": 1.0, "student": 0.5, "senior": 0.5, "other": 0.75}
 PASSENGER_TYPE_PROBS_LOCAL: Final[dict[str, float]] = {"adult": 0.62, "student": 0.24, "senior": 0.08, "other": 0.06}
@@ -117,15 +123,18 @@ DELAY_ON_TIME_TOLERANCE_MIN: Final[float] = 5.0  # suggested reliability toleran
 # --------------------------------------------------------------------------
 # Demand profiles (relative multipliers by hour of day)
 # --------------------------------------------------------------------------
+# M2.5 calibration: flatter city-bus profile (peak about 1.5x the midday level instead of about 3x) so that route-average
+# load factors land around 30-50% without pushing every peak hour above crush loads. Planted peaks (L05, L07) come from
+# explicit route boosts, not from this profile.
 LOCAL_HOUR_PROFILE_WEEKDAY: Final[dict[int, float]] = {
-    5: 0.4, 6: 0.8, 7: 1.8, 8: 2.0, 9: 1.2, 10: 0.8, 11: 0.7, 12: 0.7, 13: 0.7, 14: 0.7,
-    15: 0.8, 16: 1.0, 17: 1.5, 18: 1.7, 19: 1.1, 20: 0.7, 21: 0.45, 22: 0.3,
+    5: 0.55, 6: 0.9, 7: 1.5, 8: 1.6, 9: 1.2, 10: 1.0, 11: 1.0, 12: 1.0, 13: 1.0, 14: 1.0,
+    15: 1.05, 16: 1.15, 17: 1.4, 18: 1.5, 19: 1.15, 20: 0.85, 21: 0.6, 22: 0.4,
 }
 LOCAL_HOUR_PROFILE_WEEKEND: Final[dict[int, float]] = {
-    5: 0.3, 6: 0.5, 7: 0.7, 8: 0.9, 9: 1.0, 10: 1.1, 11: 1.1, 12: 1.0, 13: 0.9, 14: 0.9,
-    15: 1.0, 16: 1.1, 17: 1.2, 18: 1.2, 19: 1.0, 20: 0.7, 21: 0.45, 22: 0.3,
+    5: 0.4, 6: 0.6, 7: 0.85, 8: 1.0, 9: 1.1, 10: 1.2, 11: 1.2, 12: 1.1, 13: 1.0, 14: 1.0,
+    15: 1.1, 16: 1.2, 17: 1.3, 18: 1.3, 19: 1.1, 20: 0.8, 21: 0.55, 22: 0.35,
 }
-LOCAL_DAY_FACTOR: Final[dict[str, float]] = {"weekday": 1.0, "weekend": 0.65, "festival": 0.75}
+LOCAL_DAY_FACTOR: Final[dict[str, float]] = {"weekday": 1.0, "weekend": 0.8, "festival": 0.85}
 INTERCITY_HOUR_PROFILE: Final[dict[int, float]] = {
     5: 0.8, 6: 0.9, 7: 1.0, 8: 1.0, 9: 1.0, 10: 0.85, 11: 0.85, 12: 0.85, 13: 0.85, 14: 0.9,
     15: 0.95, 16: 0.95, 17: 1.0, 18: 0.9, 19: 0.9, 20: 0.9, 21: 0.8, 22: 0.7, 23: 0.7,

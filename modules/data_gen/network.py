@@ -42,8 +42,8 @@ class RouteSpec:
     # --- demand (pax per trip at profile multiplier 1.0; for intercity: fraction of seats) ---
     base: float = 10.0
     out_morning: float = 1.0
-    in_morning: float = 0.45
-    out_evening: float = 0.45
+    in_morning: float = 0.7
+    out_evening: float = 0.7
     in_evening: float = 1.0
     # {(direction, hour, day_type): multiplier}   (planted route-hours)
     hour_boost: dict[tuple[str, int, str], float] = field(default_factory=dict)
@@ -58,37 +58,37 @@ def _wk(*times: str) -> tuple[str, ...]:
 
 
 _RS_EXPRESS = ("05:30", "07:00", "09:00", "11:00", "13:00", "15:30", "17:30", "22:45")
-_RS_WEEKEND_DAYF = {"weekday": 1.0, "weekend": 1.35, "festival": 1.9}
+_RS_WEEKEND_DAYF = {"weekday": 1.0, "weekend": 1.2, "festival": 1.7}
 
 ROUTE_SPECS: tuple[RouteSpec, ...] = (
     RouteSpec("L01", "Raiya - Kalawad Road - Central Bus Stand - Railway Station (demo)", "local",
-              ("S14", "S13", "S05", "S02", "S01", "S03"), "ordinary", base=20, peak_headway=22, off_headway=50,
-              weekend_headway=60, note="Trunk residential-to-core route; organic demand, kept below the high-load threshold."),
+              ("S14", "S13", "S05", "S02", "S01", "S03"), "ordinary", base=30, peak_headway=60, off_headway=120,
+              weekend_headway=130, note="Trunk residential-to-core route; organic demand, kept below the high-load threshold."),
     RouteSpec("L02", "Kotharia - Mavdi - Central Bus Stand (demo)", "local",
-              ("S10", "S09", "S11", "S02", "S01"), "ordinary", base=18, peak_headway=24, off_headway=50, weekend_headway=60, in_offset_min=7),
+              ("S10", "S09", "S11", "S02", "S01"), "ordinary", base=30, peak_headway=60, off_headway=120, weekend_headway=130, in_offset_min=7),
     RouteSpec("L03", "Madhapar - Kalawad Road - University - Central Bus Stand (demo)", "local",
-              ("S07", "S06", "S17", "S01"), "ordinary", base=16, peak_headway=30, off_headway=55, weekend_headway=60, in_offset_min=14),
+              ("S07", "S06", "S17", "S01"), "ordinary", base=30, peak_headway=60, off_headway=120, weekend_headway=130, in_offset_min=14),
     RouteSpec("L04", "Central Bus Stand - Station Road - Aji GIDC (demo)", "local",
-              ("S01", "S04", "S21", "S22"), "ordinary", base=14, peak_headway=30, off_headway=60, weekend_headway=70, in_offset_min=12),
+              ("S01", "S04", "S21", "S22"), "ordinary", base=28, peak_headway=60, off_headway=120, weekend_headway=130, in_offset_min=12),
     RouteSpec("L05", "Mavdi - Kotharia - Aji GIDC Industrial Shuttle (demo)", "local",
-              ("S11", "S10", "S09", "S21", "S22"), "ordinary", base=24, peak_headway=20, off_headway=60, weekend_headway=70,
+              ("S11", "S10", "S09", "S21", "S22"), "ordinary", base=24, peak_headway=36, off_headway=120, weekend_headway=130,
               in_morning=0.7, out_evening=0.7, in_offset_min=6,
-              hour_boost={("outbound", 7, "weekday"): 2.0, ("outbound", 8, "weekday"): 2.0,
-                          ("inbound", 7, "weekday"): 2.0, ("inbound", 8, "weekday"): 2.0,
-                          ("outbound", 17, "weekday"): 2.0, ("inbound", 17, "weekday"): 2.0},
+              hour_boost={("outbound", 7, "weekday"): 2.3, ("outbound", 8, "weekday"): 2.3,
+                          ("inbound", 7, "weekday"): 2.3, ("inbound", 8, "weekday"): 2.3,
+                          ("outbound", 17, "weekday"): 2.3, ("inbound", 17, "weekday"): 2.3},
               note="Planted: residential (south) to industrial (east) shift-change shuttle; weekday 07:00-09:00 and 17:00-18:00 above crush demand."),
     RouteSpec("L06", "Gandhigram - Bhaktinagar - Railway Station - Aji GIDC (demo)", "local",
-              ("S15", "S16", "S28", "S27", "S03", "S22"), "ordinary", base=13, peak_headway=30, off_headway=60, weekend_headway=70, in_offset_min=16),
+              ("S15", "S16", "S28", "S27", "S03", "S22"), "ordinary", base=32, peak_headway=60, off_headway=120, weekend_headway=130, in_offset_min=16),
     RouteSpec("L07", "Madhapar - Raiya - Shapar-Veraval Industrial Area (demo)", "local",
-              ("S07", "S13", "S26", "S25"), "ordinary", base=22, speed_kmph=30.0,
+              ("S07", "S13", "S26", "S25"), "ordinary", base=34, speed_kmph=30.0,
               dep_out={"weekday": _wk("05:40", "07:05", "09:40", "12:10", "14:30", "16:45", "17:30", "18:15", "20:10"),
                        "weekend": _wk("06:30", "09:30", "13:00", "17:00")},
               dep_in={"weekday": _wk("06:20", "08:35", "10:30", "13:00", "15:30", "17:10", "18:00", "19:00", "20:45", "22:00"),
                       "weekend": _wk("07:30", "10:30", "14:00", "18:00")},
-              hour_boost={("outbound", 7, "weekday"): 2.6},
+              hour_boost={("outbound", 7, "weekday"): 2.2},
               note="Planted capacity gap: weekday 07:00-08:00 flow to Shapar-Veraval served by ONE trip (07:05)."),
     RouteSpec("L08", "University - Central Bus Stand - Ramnathpara (demo)", "local",
-              ("S18", "S01", "S19", "S20"), "ordinary", base=10, peak_headway=30, off_headway=60, weekend_headway=70, in_offset_min=9,
+              ("S18", "S01", "S19", "S20"), "ordinary", base=32, peak_headway=60, off_headway=120, weekend_headway=130, in_offset_min=9,
               in_morning=0.8, out_evening=0.8),
     RouteSpec("L09", "Madhapar - Gandhigram Village Link (demo, minimum service)", "local",
               ("S08", "S07", "S16", "S15"), "ordinary", minimum_service=True, base=3.5,
@@ -110,33 +110,33 @@ ROUTE_SPECS: tuple[RouteSpec, ...] = (
     RouteSpec("IC01", "Rajkot - Somnath Express (demo)", "intercity",
               ("S01", "S29", "S30", "S31", "S32", "S33", "S34"), "express", corridor="Rajkot-Somnath",
               dep_out={k: _RS_EXPRESS for k in C.DAY_TYPES}, dep_in={k: _RS_EXPRESS for k in C.DAY_TYPES},
-              base=0.62, day_factor=_RS_WEEKEND_DAYF, note="Primary corridor, express service."),
+              base=1.15, day_factor=_RS_WEEKEND_DAYF, note="Primary corridor, express service."),
     RouteSpec("IC02", "Rajkot - Somnath AC Seater (demo)", "intercity",
               ("S01", "S31", "S33", "S34"), "AC_seater", corridor="Rajkot-Somnath",
               dep_out={k: ("06:30", "08:30", "14:30") for k in C.DAY_TYPES},
               dep_in={k: ("06:30", "08:30", "14:30") for k in C.DAY_TYPES},
-              base=0.55, day_factor={"weekday": 1.0, "weekend": 1.3, "festival": 1.6},
+              base=0.85, day_factor={"weekday": 1.0, "weekend": 1.3, "festival": 1.6},
               trip_boost={("outbound", "08:30", "weekend"): 2.8, ("outbound", "08:30", "festival"): 2.2},
               note="Planted: Rajkot->Somnath 08:30 AC departure ~full every weekend."),
     RouteSpec("IC03", "Rajkot - Somnath AC Sleeper (demo)", "intercity",
               ("S01", "S31", "S34"), "AC_sleeper", corridor="Rajkot-Somnath",
               dep_out={k: ("23:15",) for k in C.DAY_TYPES}, dep_in={k: ("23:00",) for k in C.DAY_TYPES},
-              base=0.55, day_factor=_RS_WEEKEND_DAYF),
+              base=1.05, day_factor=_RS_WEEKEND_DAYF),
     RouteSpec("IC04", "Rajkot - Gondal - Jetpur - Junagadh Express (demo)", "intercity",
               ("S01", "S29", "S30", "S31"), "express", corridor="Rajkot-Junagadh",
-              dep_out={k: ("05:30", "06:45", "08:15", "09:45", "11:30", "13:15", "15:00", "16:45", "18:30", "20:15") for k in C.DAY_TYPES},
-              dep_in={k: ("05:30", "06:45", "08:15", "09:45", "11:30", "13:15", "15:00", "16:45", "18:30", "20:15") for k in C.DAY_TYPES},
-              base=0.55, day_factor={"weekday": 1.0, "weekend": 1.15, "festival": 1.25}),
+              dep_out={k: ("05:30", "07:00", "09:00", "11:30", "13:15", "15:00", "17:00", "19:00") for k in C.DAY_TYPES},
+              dep_in={k: ("05:30", "07:00", "09:00", "11:30", "13:15", "15:00", "17:00", "19:00") for k in C.DAY_TYPES},
+              base=0.95, day_factor={"weekday": 1.0, "weekend": 1.15, "festival": 1.25}),
     RouteSpec("IC05", "Rajkot - Jamnagar Express (demo)", "intercity",
               ("S01", "S35"), "express", corridor="Rajkot-Jamnagar",
-              dep_out={k: ("05:45", "07:15", "09:00", "10:45", "12:30", "14:15", "16:00", "17:45", "19:30", "21:15") for k in C.DAY_TYPES},
-              dep_in={k: ("05:45", "07:15", "09:00", "10:45", "12:30", "14:15", "16:00", "17:45", "19:30", "21:15") for k in C.DAY_TYPES},
-              base=0.50, day_factor={"weekday": 1.0, "weekend": 1.1, "festival": 1.2}),
+              dep_out={k: ("05:45", "07:30", "09:30", "11:30", "14:00", "16:00", "18:00", "20:00") for k in C.DAY_TYPES},
+              dep_in={k: ("05:45", "07:30", "09:30", "11:30", "14:00", "16:00", "18:00", "20:00") for k in C.DAY_TYPES},
+              base=0.75, day_factor={"weekday": 1.0, "weekend": 1.1, "festival": 1.2}),
     RouteSpec("IC06", "Rajkot - Ahmedabad AC Seater (demo)", "intercity",
               ("S01", "S36"), "AC_seater", corridor="Rajkot-Ahmedabad",
               dep_out={k: ("06:00", "09:00", "12:00", "15:00", "18:30", "22:00") for k in C.DAY_TYPES},
               dep_in={k: ("06:00", "09:00", "12:00", "15:00", "18:30", "22:00") for k in C.DAY_TYPES},
-              base=0.60, day_factor={"weekday": 1.0, "weekend": 1.2, "festival": 1.3}),
+              base=0.85, day_factor={"weekday": 1.0, "weekend": 1.2, "festival": 1.3}),
 )
 ROUTE_BY_ID = {r.route_id: r for r in ROUTE_SPECS}
 

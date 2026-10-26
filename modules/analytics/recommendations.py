@@ -116,7 +116,7 @@ def generate_recommendations(hourly: pd.DataFrame, summary: pd.DataFrame, scores
         rd = hourly[hourly["level"] == "route_direction"]
         # ------------------------------------------------------------ crowded peak route-direction-hours
         cr = rd[(rd["day_type"] == peak) & (rd["status"] == STATUS_CROWDED)]
-        for rid, g in cr.groupby("route_id"):
+        for (rid, direction), g in cr.groupby(["route_id", "direction"]):   # one recommendation per route AND direction
             for h0, h1 in contiguous_runs(g["hour"].tolist()):
                 rows = g[(g["hour"] >= h0) & (g["hour"] <= h1)]
                 recs.append(_crowded_rec(rid, rows, h0, h1, rt, summary, scores, trips_sum, stops, legs, tlf))
@@ -132,7 +132,7 @@ def generate_recommendations(hourly: pd.DataFrame, summary: pd.DataFrame, scores
                 if r is not None:
                     recs.append(r)
         # ------------------------------------------------------------ intercity at hard capacity on recurring days
-        ac = rd[rd["status"] == STATUS_AT_CAPACITY]
+        ac = rd[(rd["status"] == STATUS_AT_CAPACITY) & (rd["gap_index"] >= config.RECOMMENDATION_FULL_CAPACITY_INDEX)]
         for (rid, direction), g in ac.groupby(["route_id", "direction"]):
             recurring = g[g["day_type"].isin(["weekday", "weekend"])]
             for h0, h1 in contiguous_runs(recurring["hour"].tolist()):
@@ -180,7 +180,7 @@ def _crowded_rec(rid, rows, h0, h1, rt, summary, scores, trips_sum, stops, legs,
     ev["figures"].update(_dest_zone_evidence(rows, legs, trips_sum, stops))
     return {
         "priority": _priority(total_gap), "category": "add_service_peak",
-        "title": f"Add {scen['additional_departures']} peak departure(s) on {rid} {window} (weekdays)",
+        "title": f"Add {scen['additional_departures']} peak departure(s) on {rid} {'+'.join(dirs)} {window} (weekdays)",
         "route_id": rid, "location_id": top["location_id"], "time_window": window, "day_type": config.PEAK_DAY_TYPE,
         "corridor": r["corridor"], "direction": "+".join(dirs),
         "action": (f"Add about {scen['additional_departures']} departure(s) on {rid} in {window} on weekdays "
@@ -211,19 +211,34 @@ def _corridor_rec(cor, rows, h0, h1, routes, summary, scores, competitors, tlf, 
     comp["hour"] = pd.to_numeric(comp["departure_time"].str[:2], errors="coerce")
     inw = comp[(comp["hour"] >= h0) & (comp["hour"] <= h1)]
     seat_by_type = inw.groupby("bus_type")["seats"].sum().sort_values(ascending=False)
-    candidates = [b for b in seat_by_type.index if b in set(state_routes["bus_type"])]
-    if candidates:
-        bus = candidates[0]
-    else:  # no like-for-like state bus type: choose the state route type with the highest EPKM
-        s = summary[summary["route_id"].isin(state_routes["route_id"])].sort_values("epkm_inr", ascending=False)
-        bus = state_routes.set_index("route_id").loc[s.iloc[0]["route_id"], "bus_type"] if len(s) else state_routes.iloc[0]["bus_type"]
-    route = state_routes[state_routes["bus_type"] == bus].iloc[0]
-    seats = float(C.BUS_TYPE_SEATS[bus])
     proxy = float(rows["private_demand_proxy"].sum())
     total_gap = _window_gap(rows)
-    projected = proxy * config.STATE_CAPTURE_SHARE
+
+    def scenario_for(bus_type: str, share: float) -> dict[str, Any]:
+        rt_ = state_routes[state_routes["bus_type"] == bus_type].iloc[0]
+        return service_frequency_scenario(proxy * share, float(C.BUS_TYPE_SEATS[bus_type]), tlf, 0, float(rt_["length_km"]),
+                                          _cost_per_km(bus_type), fare_per_passenger=full_route_fare_inr(bus_type, float(rt_["length_km"])))
+
+    # Candidate state bus types: those that compete in the window (private bus types) and exist on this corridor.
+    candidates = [b for b in seat_by_type.index if b in set(state_routes["bus_type"])]
+    if not candidates:   # no like-for-like state bus type: any state type on the corridor
+        candidates = sorted(set(state_routes["bus_type"]))
+    # Choose the type with the best incremental contribution at the headline capture share (ties: more private seats).
+    alts = {b: scenario_for(b, config.STATE_CAPTURE_SHARE) for b in candidates}
+    bus = sorted(candidates, key=lambda b: (-alts[b]["incremental_contribution_inr"], -float(seat_by_type.get(b, 0)), b))[0]
+    route = state_routes[state_routes["bus_type"] == bus].iloc[0]
     fare = full_route_fare_inr(bus, float(route["length_km"]))
-    scen = service_frequency_scenario(projected, seats, tlf, 0, float(route["length_km"]), _cost_per_km(bus), fare_per_passenger=fare)
+    scen = alts[bus]
+    sens = []
+    for sh in config.STATE_CAPTURE_SHARE_SENSITIVITY:
+        sc = scenario_for(bus, sh)
+        sens.append({"capture_share": sh, "projected_passengers": sc["projected_passengers"], "additional_departures": sc["additional_departures"],
+                     "projected_load_factor_after": sc["projected_load_factor_after"],
+                     "incremental_revenue_inr": sc["incremental_revenue_inr"], "incremental_operating_cost_inr": sc["incremental_operating_cost_inr"],
+                     "incremental_contribution_inr": sc["incremental_contribution_inr"]})
+    scen = {**scen, "capture_share_assumed": config.STATE_CAPTURE_SHARE, "capture_share_sensitivity": sens}
+    alt_fig = {b: {"additional_departures": a["additional_departures"], "projected_load_factor_after": a["projected_load_factor_after"],
+                   "incremental_contribution_inr": a["incremental_contribution_inr"]} for b, a in alts.items()}
     window = hour_window(h0, h1)
     pr_hours = sorted(inw["departure_time"].unique())
     ev = {"table": "hourly_demand_supply",
@@ -231,7 +246,8 @@ def _corridor_rec(cor, rows, h0, h1, routes, summary, scores, competitors, tlf, 
           "gap_rows": _rows(rows),
           "figures": {"state_seats_in_window": float(rows["seats_offered"].sum()), "private_seats_in_window_per_day": float(rows["private_seats"].sum()),
                       "private_market_proxy_demand_per_day": proxy, "summed_gap_count_per_average_day": total_gap,
-                      "private_departure_times": pr_hours, "private_bus_types_by_seats": {k: float(v) for k, v in seat_by_type.items()}},
+                      "private_departure_times": pr_hours, "private_bus_types_by_seats": {k: float(v) for k, v in seat_by_type.items()},
+                      "state_bus_type_alternatives_at_headline_share": alt_fig},
           **_route_facts(summary, scores, str(route["route_id"]))}
     return {
         "priority": _priority(total_gap), "category": "add_service_corridor_slot",
@@ -246,7 +262,8 @@ def _corridor_rec(cor, rows, h0, h1, routes, summary, scores, competitors, tlf, 
         "assumptions_json": jdump({"private_occupancy_assumption": config.PRIVATE_MARKET_OCCUPANCY_ASSUMPTION,
                                    "state_capture_share_assumption": config.STATE_CAPTURE_SHARE, "target_load_factor": tlf,
                                    "fare_per_passenger_inr": fare, "fare_basis": "full-route fare from constants.FARE_TABLE (illustrative demo tariff)",
-                                   "bus_type_choice": "state bus type matching the most private seats in the window",
+                                   "bus_type_choice": "state bus type (competing in the window) with the best incremental contribution at the headline capture share",
+                                   "capture_share_sensitivity": list(config.STATE_CAPTURE_SHARE_SENSITIVITY),
                                    "private_market": "synthetic competitor services; proxy demand is an assumption, not observed",
                                    "note": config.SIMULATION_BADGE_TEXT}),
         "expected_impact_json": jdump({**scen, "demand_is_lower_bound": True}),

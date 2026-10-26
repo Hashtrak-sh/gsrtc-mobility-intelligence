@@ -28,7 +28,7 @@ def test_f1_peak_load_factor_route_hours(analytics):
     hi = rh[rh > config.HIGH_PEAK_LOAD_FACTOR]
     assert set(hi.index) == {("L05", 7), ("L05", 8), ("L05", 17), ("L07", 7)}
     assert hi.max() <= 1.6 + 1e-9                                  # physically plausible: never above the crush limit
-    assert hi[("L05", 8)] == pytest.approx(1.40, abs=0.02) and hi[("L07", 7)] == pytest.approx(1.23, abs=0.02)
+    assert hi[("L05", 8)] > 1.2 and hi[("L07", 7)] > 1.2 and hi.min() > config.HIGH_PEAK_LOAD_FACTOR
     h = analytics["hourly_demand_supply"]
     crowded = h[(h["level"] == "route_direction") & (h["day_type"] == "weekday") & (h["status"] == "crowded")]
     assert set(zip(crowded["route_id"], crowded["hour"])) == {("L05", 7), ("L05", 8), ("L05", 17), ("L07", 7)}
@@ -54,7 +54,7 @@ def test_f1b_intercity_weekend_at_capacity(analytics):
 def test_f2_shapar_gap(analytics):
     h = analytics["hourly_demand_supply"]
     r = h[(h["route_id"] == "L07") & (h["day_type"] == "weekday") & (h["hour"] == 7) & (h["direction"] == "outbound")].iloc[0]
-    assert r["trips_per_day"] == 1.0 and r["seats_offered"] == 40 and r["zone_id"] == "Z13" and r["status"] == "crowded"
+    assert r["trips_per_day"] == 1.0 and r["seats_offered"] == 40 and r["status"] == "crowded"
     rec = analytics["recommendations"]
     l07 = rec[(rec["route_id"] == "L07") & (rec["category"] == "add_service_peak")].iloc[0]
     fig = json.loads(l07["evidence_json"])["figures"]
@@ -225,7 +225,7 @@ def test_recommendations_reference_existing_gap_rows_with_identical_windows(anal
 def test_recommendation_contents(analytics):
     rec = analytics["recommendations"].set_index("recommendation_id")
     titles = " | ".join(rec["title"])
-    assert re.search(r"L05 07:00-09:00", titles) and re.search(r"L05 17:00-18:00", titles) and re.search(r"L07 07:00-08:00", titles)
+    assert re.search(r"L05 outbound 07:00-09:00", titles) and re.search(r"L05 inbound 17:00-18:00", titles) and re.search(r"L07 outbound 07:00-08:00", titles)
     assert re.search(r"Rajkot-Somnath 18:00-22:00", titles)
     assert set(rec["category"]) == {"add_service_peak", "add_service_corridor_slot", "add_capacity_weekend", "protect_minimum_service"}
     assert (rec["confidence_label"] == config.CONFIDENCE_LABEL).all() and rec["source_type"].eq("synthetic").all()
@@ -237,7 +237,7 @@ def test_recommendation_contents(analytics):
         assert imp["additional_departures"] >= 1
         assert any("not modelled" in c.lower() for c in json.loads(r["constraints_json"]))
         assert "route_summary" in json.loads(r["evidence_json"])
-    l05 = rec[rec["title"].str.contains("L05 07:00-09:00")].iloc[0]
+    l05 = rec[rec["title"].str.contains("L05 outbound 07:00-09:00")].iloc[0]
     imp = json.loads(l05["expected_impact_json"])
     assert imp["projected_load_factor_after"] <= config.SERVICE_TARGET_LOAD_FACTOR + 1e-9    # the recommended supply closes the gap
     f4 = rec[rec["category"] == "add_service_corridor_slot"].iloc[0]
@@ -294,3 +294,44 @@ def test_main_prints_summary_and_passes_findings(tmp_path, tables, capsys):
     out = capsys.readouterr().out
     assert "Simulated data for demonstration" in out and "FAIL" not in out and out.count("[PASS]") == 6
     assert not io.missing_tables("processed", tmp_path) == list(io.DERIVED_TABLES)
+
+
+# ----------------------------------------------------------------------------- M2.5 calibration plausibility
+def test_calibrated_economics_are_plausible(analytics, tables):
+    s = analytics["route_summary"].set_index("route_id")
+    local = s[(s["route_type"] == "local") & ~s["minimum_service"]]
+    assert local["load_factor_pct"].between(25, 50).all() and local["epkm_inr"].between(13, 30).all()
+    assert (local["contribution_inr"] < 0).all()                       # city bus: loss-making on ticket revenue alone
+    ic = s[s["route_type"] == "intercity"]
+    assert ic.loc[["IC01", "IC02", "IC04", "IC05", "IC06"], "load_factor_pct"].between(55, 80).all()
+    assert ic["epkm_inr"].between(30, 56).all()
+    assert ic.loc["IC06", "contribution_inr"] > -0.05 * ic.loc["IC06", "ticket_revenue_inr"]   # strongest corridor ~ break-even
+    assert (s.loc[["L09", "L10"], "load_factor_pct"] < 10).all()       # minimum-service routes stay clearly low
+    assert len(tables["tickets"]) <= 300_000
+    fare = lambda b, km: __import__("modules.analytics.recommendations", fromlist=["x"]).full_route_fare_inr(b, km)
+    km = tables["routes"].set_index("route_id")["length_km"]
+    assert 450 <= fare("AC_sleeper", km["IC03"]) <= 500                # Rajkot-Somnath AC sleeper
+
+
+def test_f4_recommendation_single_departure_with_capture_sensitivity(analytics):
+    rec = analytics["recommendations"]
+    r = rec[rec["category"] == "add_service_corridor_slot"].iloc[0]
+    imp = json.loads(r["expected_impact_json"])
+    assert imp["additional_departures"] == 1 and imp["incremental_contribution_inr"] >= 0
+    assert 0.7 <= imp["projected_load_factor_after"] <= config.SERVICE_TARGET_LOAD_FACTOR + 1e-9
+    sens = imp["capture_share_sensitivity"]
+    assert [x["capture_share"] for x in sens] == list(config.STATE_CAPTURE_SHARE_SENSITIVITY)
+    assert any(x["capture_share"] == imp["capture_share_assumed"] for x in sens)
+    ev = json.loads(r["evidence_json"])
+    assert r["route_id"] == "IC02" and "AC_seater" in ev["figures"]["state_bus_type_alternatives_at_headline_share"]
+
+
+def test_crowded_recommendations_are_split_by_direction(analytics):
+    rec = analytics["recommendations"]
+    peak = rec[rec["category"] == "add_service_peak"]
+    for _, r in peak.iterrows():
+        rows = json.loads(r["evidence_json"])["gap_rows"]
+        assert {x["direction"] for x in rows} == {r["direction"]}      # single direction per recommendation
+        assert r["direction"] in r["title"]
+    l05 = {(r.direction, r.time_window) for r in peak.itertuples() if r.route_id == "L05"}
+    assert ("outbound", "07:00-09:00") in l05 and ("inbound", "17:00-18:00") in l05

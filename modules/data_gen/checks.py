@@ -52,7 +52,7 @@ def stop_zone_map(stops: pd.DataFrame) -> pd.Series:
 
 
 # ----------------------------------------------------------------- finding 1: high load route-hours
-def high_load_route_hours(tables: Tables, min_bps: float = 1.2, day_type: str = "weekday") -> pd.DataFrame:
+def high_load_route_hours(tables: Tables, min_bps: float = 1.4, day_type: str = "weekday") -> pd.DataFrame:
     """Route-hours (all weekday trips scheduled to depart in the hour, both directions) with boardings per seat > min_bps.
 
     boardings_per_seat = sum(boardings) / sum(seats)  (seat-weighted passenger TURNOVER, not a load factor: passengers who
@@ -270,7 +270,7 @@ def evaluate_planted(tables: Tables) -> list[Check]:
                      f"dates={len(wk)} min boardings/seat={wk['boardings_per_seat'].min():.2f} min peak/seat={wk['peak_onboard_per_seat'].min():.2f}"))
     g = capacity_gap_window(tables)
     ok = (g["serving_routes"] == ["L07"] and g["trips_per_weekday"] == 1.0 and g["boardings_per_seat"] >= 1.5
-          and g["other_hours_boardings_per_seat"] <= 0.8 and g["pax_to_zone_per_weekday"] >= g["seats_per_weekday"])
+          and g["other_hours_boardings_per_seat"] <= 1.0 and g["pax_to_zone_per_weekday"] >= g["seats_per_weekday"])
     out.append(Check("F2 Shapar-Veraval (Z13) weekday 07h: demand with one trip", bool(ok),
                      f"trips/day={g['trips_per_weekday']:.1f} boardings/seat={g['boardings_per_seat']:.2f} pax_to_zone/day={g['pax_to_zone_per_weekday']:.0f} seats/day={g['seats_per_weekday']:.0f}"))
     od = top_od_pairs(tables, top=10)

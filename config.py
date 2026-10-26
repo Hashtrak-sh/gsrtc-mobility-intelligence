@@ -142,6 +142,10 @@ PEAK_DAY_TYPE: Final[str] = "weekday"
 RECOMMENDATION_HIGH_GAP: Final[float] = 50.0
 RECOMMENDATION_MIN_CORRIDOR_WINDOW_GAP: Final[float] = 60.0
 STATE_CAPTURE_SHARE: Final[float] = 0.25
+# Sensitivity of the corridor-slot recommendation to the (assumed) capture share; stored in expected_impact_json.
+STATE_CAPTURE_SHARE_SENSITIVITY: Final[tuple[float, ...]] = (0.15, 0.25, 0.35)
+# A hard-capped (intercity) route-hour is only recommended for extra capacity when its peak load factor is essentially 100%.
+RECOMMENDATION_FULL_CAPACITY_INDEX: Final[float] = 0.99
 CONFIDENCE_LABEL: Final[str] = "Indicative – synthetic data"
 
 # --------------------------------------------------------------------------
