@@ -27,3 +27,34 @@ def cctv_hourly_profile(cctv: pd.DataFrame, trips: pd.DataFrame) -> pd.DataFrame
     g["measurement_method"] = methods
     g["source_type"] = SOURCE_TYPE
     return g[COLUMNS]
+
+
+# ---------------------------------------------------------------------------
+# Detector status (presentation support; no detection happens here)
+# ---------------------------------------------------------------------------
+DETECTOR_PACKAGES = ("ultralytics", "supervision", "cv2")
+
+# Expected columns of real detector output (docs/DATA_SCHEMA.md `cctv_counts`); shown as a schema, never with invented counts.
+EXPECTED_OUTPUT_SCHEMA = [
+    ("location_id", "string", "Camera or location label (not a person identifier)"),
+    ("timestamp_min", "datetime", "Start of the minute bucket"),
+    ("direction", "string", "inbound / outbound / unknown"),
+    ("class", "string", "person / car / two_wheeler / auto / bus / truck / other"),
+    ("count", "integer", "Aggregate count in the bucket (>= 0)"),
+    ("measurement_method", "string", "actual_detector for real inference (this prototype's synthetic stream uses synthetic)"),
+    ("source_type", "string", "Provenance of the counts"),
+]
+
+
+def detector_status(available: dict[str, bool]) -> dict:
+    """Detector availability from a package -> installed map. ``state`` is ``unavailable`` or ``no_output``.
+
+    Even with every dependency installed, no counts exist until a detector run has produced output, so the dashboard never
+    reports a detector result from this function.
+    """
+    missing = [p for p in DETECTOR_PACKAGES if not available.get(p, False)]
+    if missing:
+        return {"state": "unavailable", "missing": missing,
+                "message": "Detector unavailable: required package(s) not installed: " + ", ".join(missing) + "."}
+    return {"state": "no_output", "missing": [],
+            "message": "Detector packages are installed, but no detector output has been produced, so no real counts are shown."}
