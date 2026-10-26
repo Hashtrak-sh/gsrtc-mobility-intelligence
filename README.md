@@ -1,51 +1,96 @@
-# GSRTC Mobility Intelligence — Claude Code Starter Kit
+# GSRTC Mobility Intelligence
 
-This kit defines a local-first, synthetic-data prototype for demonstrating the approved GSRTC professional market survey scope through a connected, explainable decision-support workflow.
+A local-first, synthetic-data Streamlit prototype that demonstrates the approved GSRTC professional market survey scope as a connected, explainable decision-support workflow. It is a tender demonstration, not a production system, and says nothing about actual GSRTC demand or performance.
 
-## Start here
+**Every simulated output carries the label "Simulated data for demonstration".** Synthetic values are never presented as GSRTC facts.
 
-1. Open this folder as the project root in Claude Code.
-2. Read `CLAUDE.md`, `RULES.md`, and all documents listed in `CLAUDE.md`.
-3. Start with `prompts/00_BOOTSTRAP.md`.
-4. Run one milestone prompt at a time, in order. Do not ask Claude Code to implement every module in one giant pass.
-5. After each milestone, run the app/tests, inspect the result, and commit the working state.
+## Current status: Milestone 0 (scaffold) only
 
-## Pilot and demo story
+What exists and works today:
 
-- **Primary corridor:** Rajkot–Somnath.
-- **Local pilot:** Rajkot-area local routes and stops.
-- **Long-distance comparison:** Rajkot–Somnath and a small set of other synthetic intercity corridors.
-- **Data:** synthetic passenger, ticketing, operations, survey, and competitor records; real geography may be sourced from OpenStreetMap and must be labelled separately.
-- **Core demo story:** demand and survey evidence + observed crowding/counts + supply gap + route/service/fare scenario + projected outcomes + evidence-backed report.
+- Project scaffold, `config.py` (seed 42, pilot bounding box, route-score weights, thresholds, paths).
+- A single Streamlit entry point (`app.py`) with the nine navigation pages. Each page shows its title, purpose, the simulation badge, a "What this means" box, a "Data and assumptions" expander and a clear **"Data not yet generated"** empty state. **No page shows any numbers yet.**
+- A diagnostics panel (Overview, "System health and diagnostics") showing which optional packages are installed, whether `ANTHROPIC_API_KEY` is set (the key is never displayed), the permitted CCTV clips found, and which expected data tables exist.
+- Parquet I/O helpers (`modules/data/io.py`) and a provenance helper (`modules/data/provenance.py`).
+- Tests (config, imports, I/O and provenance, diagnostics, page smoke tests via Streamlit `AppTest`).
 
-Every simulated output must carry the visible label **“Simulated data for demonstration”**. Do not present synthetic values as GSRTC facts.
+**Not built yet** (later milestones, see `prompts/`): synthetic data generation (M1), analytics and KPIs (M2), dashboard content (M3), route intelligence and OSM geography (M4), competition/pricing/survey (M5), CCTV counting and ML (M6), PDF/CSV reports and "Ask the Data" (M7). The commands shown on the empty-state screens (for example `python -m modules.data_gen.generate`) are the planned commands; until their milestone they exist only as stubs that raise `NotImplementedError`.
 
-## Recommended stack
+## Python version
 
-- Python 3.11
-- Streamlit
-- pandas, NumPy, DuckDB, PyArrow
-- Plotly; pydeck only where it adds real value
-- scikit-learn for baseline models; XGBoost/SHAP only after the deterministic pipeline works
-- NetworkX; OSMnx for cached geography/routing where practical
-- OpenCV + Ultralytics + supervision as an optional, isolated CCTV proof of concept
-- ReportLab for PDF reports
-- pytest
+The kit specifies Python 3.11. This repository is developed and tested on **Python 3.12** (the only interpreter available on the development machine). Python 3.11 is expected to work but has not been tested.
 
-Prophet, H3, external LLM APIs, and cloud deployment are optional enhancements, not blockers for a working prototype. Do not install or require every library before the first end-to-end path works.
+## Setup
 
-## Local setup (Windows PowerShell)
+Windows PowerShell:
 
 ```powershell
-py -3.11 -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+```
+
+Git Bash:
+
+```bash
+py -3.12 -m venv .venv
+source .venv/Scripts/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Note: `pyarrow` is pinned below 23 because pyarrow 26.x's Parquet DLL was blocked by a Windows Application Control policy on the development machine. Versions 17 to 22 were verified there.
+
+Optional extras (not needed for the current milestone) are listed, grouped by purpose, in `requirements-optional.txt`.
+
+## Run
+
+```powershell
 python -m streamlit run app.py
 ```
 
-If the generated repository uses `app/Home.py` instead, use the exact command documented by the implementation. Prefer a single clear entry point and avoid maintaining two competing Streamlit entry points.
+Without activating the venv, use `.\.venv\Scripts\python.exe -m streamlit run app.py` (PowerShell) or `.venv/Scripts/python.exe -m streamlit run app.py` (Git Bash).
 
-## Important boundaries
+## Test
 
-This is a tender demonstration, not a production system. It does not prove model accuracy, operational feasibility, or actual GSRTC demand. All assumptions must be visible. Never fabricate live inference, model results, CCTV counts, or source citations.
+```powershell
+python -m pytest
+```
+
+## Optional LLM key
+
+Copy `.env.example` to `.env` and set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`) to enable "Ask the Data" once it is built (M7). The app runs without it. `.env` is git-ignored. The app does not load `.env` automatically yet; set the variable in your shell for now.
+
+## Structure
+
+```
+app.py                 single entry point: st.navigation + st.Page (nine pages)
+config.py              seed, bounding box, score weights, thresholds, paths, badge text
+pages/                 page scripts (0_Overview.py ... 8_Reports.py); presentation only
+modules/
+  ui/                  layout helpers (header, badge, empty states), health panel, page registry
+  diagnostics.py       optional-dependency / API-key / data-table checks (no Streamlit)
+  data/                io.py (parquet read/write), provenance.py
+  data_gen/ analytics/ routing/ survey/ competition/ cv/ llm/ reporting/   later milestones
+data/
+  raw/                 cached OSM inputs and permitted video (git-ignored contents)
+  synthetic/           generated source tables (git-ignored) + planted_findings.md (tracked, M1)
+  processed/           derived analytics tables (git-ignored)
+tests/  docs/  prompts/
+```
+
+Navigation: `app.py` calls `st.navigation`, which replaces Streamlit's automatic `pages/` sidebar menu, so there is one menu only. Page file names follow `docs/ARCHITECTURE.md`; the Overview is `pages/0_Overview.py`. The page order and titles live in `modules/ui/pages_registry.py`.
+
+Generated Parquet files are git-ignored because one command regenerates them from `SEED = 42`.
+
+## Pilot and demo story
+
+- **Primary corridor:** Rajkot-Somnath (about 190 km). The configured bounding box covers Rajkot and Somnath/Veraval.
+- **Local pilot:** Rajkot-area local routes and stops.
+- **Data:** synthetic passenger, ticketing, operations, survey and competitor records; real geography may come from OpenStreetMap and must be labelled separately.
+- **Demo story:** demand and survey evidence, observed crowding/counts, supply gap, route/service/fare scenario, projected outcomes, evidence-backed report.
+
+## Boundaries
+
+This is a demonstration. It does not prove model accuracy, operational feasibility or actual GSRTC demand. CCTV counting (when built) is aggregate-only, with no face or identity recognition, on a clip the developer is permitted to process. See `RULES.md`.

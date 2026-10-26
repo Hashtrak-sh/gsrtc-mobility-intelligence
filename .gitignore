@@ -7,3 +7,45 @@ data/raw/video/
 *.mov
 *.avi
 *.pt
+
+# --- M0 additions ---
+venv/
+.env.*
+!.env.example
+.pytest_cache/
+.streamlit/secrets.toml
+*.egg-info/
+
+# Generated data: one command regenerates it (python -m modules.data_gen.generate)
+data/synthetic/*
+!data/synthetic/.gitkeep
+!data/synthetic/planted_findings.md
+data/processed/*
+!data/processed/.gitkeep
+# Cached OSM downloads and other raw inputs are local only
+data/raw/*
+!data/raw/.gitkeep
+*.onnx
+*.mkv
+*.webm
+
+# --- M0 additions ---
+venv/
+.env.*
+!.env.example
+.pytest_cache/
+.streamlit/secrets.toml
+*.egg-info/
+*.onnx
+*.mkv
+*.webm
+
+# Generated data: one command regenerates it (python -m modules.data_gen.generate)
+data/synthetic/*
+!data/synthetic/.gitkeep
+!data/synthetic/planted_findings.md
+data/processed/*
+!data/processed/.gitkeep
+# Cached OSM downloads and other raw inputs are local only
+data/raw/*
+!data/raw/.gitkeep

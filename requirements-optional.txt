@@ -1,0 +1,21 @@
+# Optional extras. NOT required for the core app; install only when the related
+# milestone begins:   pip install -r requirements-optional.txt
+# (or copy just one group's lines).
+
+# --- geo (Milestone 4): real OSM geography, cached to data/raw/ ---
+osmnx>=2.0
+networkx>=3.2
+# h3>=4.0          # optional hex grid (config.H3_RESOLUTION)
+
+# --- ml (Milestone 6): ridership baseline model ---
+scikit-learn>=1.4
+# shap>=0.45       # only if a compatible fitted model exists
+# prophet>=1.1     # only if enough synthetic history exists
+
+# --- cv (Milestone 6): CCTV aggregate counting, CPU ---
+opencv-python>=4.9
+ultralytics>=8.2
+supervision>=0.21
+
+# --- llm (Milestone 7): "Ask the Data" ---
+anthropic>=0.40

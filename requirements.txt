@@ -1,0 +1,10 @@
+# P0 core dependencies only. Optional extras: requirements-optional.txt
+streamlit>=1.40,<2
+pandas>=2.2,<3
+numpy>=1.26,<3
+duckdb>=1.0,<2
+# <23: pyarrow 26.x _parquet.pyd was blocked by a Windows Application Control policy on the dev machine
+pyarrow>=15,<23
+plotly>=5.22,<7
+reportlab>=4.0,<5
+pytest>=8.0,<10
