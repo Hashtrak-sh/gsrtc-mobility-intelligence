@@ -1,0 +1,77 @@
+{
+  "generated_at_utc": "2026-10-26T07:21:50+00:00",
+  "measurement_method": "actual_detector",
+  "source_type": "cctv_detector_prerecorded_clip",
+  "time_basis": "clip_relative",
+  "model": {
+    "name": "yolov8n.pt",
+    "weights_sha256": "f59b3d833e2ff32e194b5bb8e08d211dc7c5bdf144b90d2c8412c47ccfc83b36",
+    "family": "Ultralytics YOLO (COCO-pretrained)"
+  },
+  "versions": {
+    "ultralytics": "8.4.189",
+    "supervision": "0.26.1",
+    "opencv": "5.0.0",
+    "python": "3.12.10"
+  },
+  "thresholds": {
+    "conf": 0.25,
+    "iou": 0.5,
+    "imgsz": 640
+  },
+  "stride": 1,
+  "device": "cpu",
+  "tracker": "supervision ByteTrack (ephemeral ids used only to avoid double counting; never stored)",
+  "line_config": {
+    "location_id": "sample_road_clip",
+    "description": "Public sample road-traffic clip, location not in the pilot area; used only to demonstrate the counting method. Fixed elevated camera looking down a two-carriageway road; all visible traffic travels toward the camera. Counting line: horizontal at 58% of frame height (y = 418 of 720), from the left edge to 58% of the width, spanning both carriageways and the left footpath.",
+    "line": {
+      "a": [
+        0.0,
+        0.58
+      ],
+      "b": [
+        0.58,
+        0.58
+      ],
+      "coords": "normalized",
+      "positive_is": "inbound",
+      "note": "Directed left to right; moving downward in the image (toward the camera) = inbound, upward (away) = outbound. 'inbound' here only means toward the camera, not toward any stand or city."
+    },
+    "classes": [
+      "person",
+      "car",
+      "two_wheeler",
+      "bus",
+      "truck"
+    ],
+    "recording_start": null,
+    "time_basis": "clip_relative",
+    "clip_label": "Public sample road-traffic clip (original title: 4K Road traffic video for object detection and tracking). Actual resolution 1280x720 at 30 fps."
+  },
+  "line_config_file": "road_traffic_4k.lines.json",
+  "clip": {
+    "filename": "road_traffic_4k.mp4",
+    "original_filename": "4K Road traffic video for object detection and tracking - free download now!.mp4",
+    "sha256": "e5909cfa65d97c784398d361c82183d2461bd79df641da3ecbf29ac6ef58d2f7",
+    "fps": 30.0,
+    "width": 1280,
+    "height": 720,
+    "total_frames": 9187,
+    "duration_s": 306.23333333333335
+  },
+  "segment": {
+    "start_s": 0.0,
+    "processed_s": 306.13,
+    "full_clip": true
+  },
+  "frames_processed": 9184,
+  "detections_tracked": 90137,
+  "processing_seconds": 997.8,
+  "annotated_video": "annotated_road_traffic_4k.mp4",
+  "privacy": {
+    "head_region_blur_fraction": 0.25,
+    "note": "Upper part of person boxes is blurred in the annotated video. This is not reliable face anonymisation: missed detections are not blurred."
+  },
+  "limitations": "COCO has no auto-rickshaw class; autos may be detected as car/two_wheeler or missed. Counts are not validated unless a spot check is recorded."
+}

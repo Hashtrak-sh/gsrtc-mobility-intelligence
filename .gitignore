@@ -68,3 +68,17 @@ data/processed/cctv/
 # --- M7 ---
 data/processed/llm_cache/
 data/processed/reports/
+
+# --- Hosting (Streamlit Community Cloud) ---
+# The hosted app has no data-preparation step, so the generated tables it reads (about 6 MB) are tracked.
+# Regenerate locally with the commands in the README and commit the result to refresh the hosted data.
+!data/synthetic/*.parquet
+!data/synthetic/*.provenance.json
+!data/processed/*.parquet
+!data/processed/*.provenance.json
+!data/processed/cctv_spot_check.json
+# Only the short browser-playable CCTV excerpt is tracked; the full annotated clip (about 500 MB) and the weights stay local
+!data/processed/cctv/
+data/processed/cctv/*
+!data/processed/cctv/*_excerpt.mp4
+!data/processed/cctv/*_excerpt.json

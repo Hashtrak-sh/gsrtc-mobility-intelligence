@@ -1,0 +1,7 @@
+{
+  "source_video": "annotated_road_traffic_4k.mp4",
+  "start_s": 105.0,
+  "duration_s": 60.0,
+  "codec": "h264 (libx264, crf 26), 1280x720, no audio",
+  "purpose": "Short browser-playable excerpt for hosting; it covers the spot-check window (clip time 120-150 s). Counts on the page are for the full clip."
+}

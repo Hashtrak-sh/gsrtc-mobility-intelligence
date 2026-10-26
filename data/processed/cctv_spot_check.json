@@ -1,0 +1,49 @@
+{
+  "label": "Developer spot check (AI agent), not an independent human count.",
+  "clip": "road_traffic_4k.mp4",
+  "segment": "clip time 120-150 s (02:00-02:30), 30 s, frames sampled every 0.5 s (60 frames), crops around the counting line",
+  "detector_count": 30,
+  "reference_count": 29,
+  "by_class": {
+    "car": {
+      "detector": 27,
+      "reference": 27
+    },
+    "bus": {
+      "detector": 3,
+      "reference": 1
+    },
+    "truck": {
+      "detector": 0,
+      "reference": 1
+    },
+    "person": {
+      "detector": 0,
+      "reference": 0
+    }
+  },
+  "by_direction": {
+    "inbound": {
+      "detector": 30,
+      "reference": 29
+    },
+    "outbound": {
+      "detector": 0,
+      "reference": 0
+    }
+  },
+  "absolute_error": 1,
+  "error_pct": 3.4,
+  "result_text": "Total vehicle crossings: detector 30 vs reference 29 (error +1, +3.4%). All traffic in the segment moves toward the camera, so every crossing is inbound (0 outbound in both). By class the totals match for cars/vans (27 vs 27) but the detector labels 3 crossings as bus where I see 1 articulated bus and 1 truck, so class labels are less reliable than totals (bus +2, truck -1). Totals can hide compensating errors: crossings were not matched one-to-one.",
+  "limitations": [
+    "Reference counted by an AI agent from 60 sampled frames (0.5 s apart) in crops of the line area; not an independent human count and no human check has been done.",
+    "Vehicles sit near the line in only 1-2 sampled frames and several box centres were within about 10 px of the line, so the reference is uncertain by about +/-2 crossings.",
+    "Vans and minivans were counted as cars in the reference; the detector may label them car, bus or truck.",
+    "One 30 s segment of dense, mostly one-directional traffic; says nothing about outbound counting, night, rain or other camera angles.",
+    "Crossings are not matched one-to-one, so equal totals do not prove equal events."
+  ],
+  "human_check_completed": false,
+  "class_notes": {
+    "person": "inspected annotated frames show the person boxes on roadside bollards while the real, very small pedestrians were not detected, so these are false positives (docs/CCTV_METHOD.md)"
+  }
+}

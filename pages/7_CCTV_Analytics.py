@@ -1,4 +1,6 @@
 """CCTV Analytics: the SYNTHETIC footfall stream, and the honest status of the real-video detector."""
+import json
+
 import pandas as pd
 import streamlit as st
 
@@ -106,10 +108,23 @@ if not det.empty:
     else:
         st.warning("No spot check has been recorded, so these counts are not validated and no accuracy is claimed.")
     video = config.PROCESSED_DIR / "cctv" / str(prov.get("annotated_video") or "")
-    if prov.get("annotated_video") and video.is_file():
+    # Hosted deployments ship only a short browser-playable excerpt (described by a JSON sidecar), not the full annotated clip.
+    excerpt = video.with_name(f"{video.stem}_excerpt.mp4")
+    excerpt_meta = excerpt.with_suffix(".json")
+    if prov.get("annotated_video") and (video.is_file() or excerpt.is_file()):
+        excerpt_note = ""
+        if not video.is_file():
+            video = excerpt
+            try:
+                em = json.loads(excerpt_meta.read_text(encoding="utf-8"))
+                lo, hi = int(em["start_s"]), int(em["start_s"] + em["duration_s"])
+                excerpt_note = (f" Excerpt only: clip time {lo // 60:02d}:{lo % 60:02d}-{hi // 60:02d}:{hi % 60:02d} "
+                                "(covers the spot-check window); the counts above are for the full clip.")
+            except Exception:  # noqa: BLE001 - a missing sidecar only drops the excerpt note
+                excerpt_note = " Excerpt only; the counts above are for the full clip."
         st.video(str(video))
         st.caption("Pre-recorded clip, not live. Detector boxes and counting line are drawn; no track identifiers are shown. The upper part of "
-                   "person boxes is blurred, which is not reliable face anonymisation (missed detections are not blurred).")
+                   "person boxes is blurred, which is not reliable face anonymisation (missed detections are not blurred)." + excerpt_note)
 else:
     if CC.detector_status(deps)["state"] == "unavailable" and not out["cv_env_exists"]:
         st.error("Detector output not available. " + status["message"])
